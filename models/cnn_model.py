@@ -23,46 +23,34 @@ class CNNModel(
             padding=2
         )
 
-        self.bn1 = nn.BatchNorm1d(
-            32
-        )
-
-        self.pool1 = nn.MaxPool1d(
-            2
-        )
+        self.bn1 = nn.BatchNorm1d(32)
 
         self.conv2 = nn.Conv1d(
-            32,
-            64,
+            in_channels=32,
+            out_channels=64,
             kernel_size=3,
             padding=1
         )
 
-        self.bn2 = nn.BatchNorm1d(
-            64
-        )
+        self.bn2 = nn.BatchNorm1d(64)
 
-        self.pool2 = nn.MaxPool1d(
-            2
-        )
+        self.relu = nn.ReLU()
 
-        self.flatten = nn.Flatten()
+        self.pool = nn.MaxPool1d(2)
+
+        self.global_pool = nn.AdaptiveAvgPool1d(1)
+
+        self.dropout = nn.Dropout(0.3)
 
         self.fc1 = nn.Linear(
-            64 * 25,
+            64,
             128
-        )
-
-        self.dropout = nn.Dropout(
-            0.3
         )
 
         self.fc2 = nn.Linear(
             128,
             1
         )
-
-        self.relu = nn.ReLU()
 
         self.sigmoid = nn.Sigmoid()
 
@@ -77,7 +65,7 @@ class CNNModel(
             1
         )
 
-        x = self.pool1(
+        x = self.pool(
             self.relu(
                 self.bn1(
                     self.conv1(x)
@@ -85,7 +73,7 @@ class CNNModel(
             )
         )
 
-        x = self.pool2(
+        x = self.pool(
             self.relu(
                 self.bn2(
                     self.conv2(x)
@@ -93,7 +81,9 @@ class CNNModel(
             )
         )
 
-        x = self.flatten(x)
+        x = self.global_pool(x)
+
+        x = x.squeeze(-1)
 
         x = self.relu(
             self.fc1(x)
