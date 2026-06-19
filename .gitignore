@@ -18,6 +18,9 @@ data/processed/dataset_55/
 # Reports
 data/processed/reports/
 
+#Partitions
+data/partitions/
+
 # Model Weights
 *.pth
 *.pt
