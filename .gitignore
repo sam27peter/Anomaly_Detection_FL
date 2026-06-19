@@ -1,0 +1,30 @@
+# Virtual Environment
+venv/
+
+# Python Cache
+__pycache__/
+*.pyc
+
+# VS Code
+.vscode/
+
+# Dataset Files
+data/raw/
+
+# Generated Datasets
+data/processed/dataset_25/
+data/processed/dataset_55/
+
+# Reports
+data/processed/reports/
+
+# Model Weights
+*.pth
+*.pt
+
+# Results
+results/
+
+# OS Files
+.DS_Store
+Thumbs.db
