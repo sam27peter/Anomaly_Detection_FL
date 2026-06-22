@@ -1,0 +1,7 @@
+{
+    "num_channels": 82,
+    "largest_signal": 8640,
+    "smallest_signal": 670,
+    "average_signal_length": 6222.256097560976,
+    "total_anomaly_points": 63688
+}

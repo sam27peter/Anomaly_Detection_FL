@@ -1,7 +1,7 @@
 import os
 import json
 import copy
-
+import sys
 import numpy as np
 
 import torch
@@ -32,9 +32,17 @@ NUM_CLIENTS = 5
 
 ROUNDS = 3
 
-DATASET_TYPE = "25"
+DATASET_TYPE = (
+    sys.argv[1]
+    if len(sys.argv) > 1
+    else "25"
+)
 
-PARTITION_TYPE = "iid"
+PARTITION_TYPE = (
+    sys.argv[2]
+    if len(sys.argv) > 2
+    else "iid"
+)
 
 DEVICE = (
     "cuda"
@@ -357,6 +365,34 @@ def run_fedavg():
     print(global_cm)
 
     # ==================================================
+    # GLOBAL CONFUSION MATRIX IMAGE
+    # ==================================================
+
+    from sklearn.metrics import (
+        ConfusionMatrixDisplay
+    )
+
+    disp = ConfusionMatrixDisplay(
+        confusion_matrix=global_cm
+    )
+
+    disp.plot()
+
+    plt.title(
+        "Global Confusion Matrix"
+    )
+
+    plt.savefig(
+
+        os.path.join(
+            save_dir,
+            "global_confusion_matrix.png"
+        )
+    )
+
+    plt.close()
+
+    # ==================================================
     # SAVE MODEL
     # ==================================================
 
@@ -560,7 +596,50 @@ def run_fedavg():
 
     print("\nFedAvg Completed")
 
+    summary_file = (
+        "results/federated/"
+        "fedavg_summary.csv"
+    )
 
+    import pandas as pd
+
+    summary = pd.DataFrame([{
+
+        "dataset":
+            DATASET_TYPE,
+
+        "partition":
+            PARTITION_TYPE,
+
+        "accuracy":
+            global_accuracy,
+
+        "precision":
+            global_precision,
+
+        "recall":
+            global_recall,
+
+        "f1":
+            global_f1
+
+    }])
+
+    if os.path.exists(summary_file):
+
+        summary.to_csv(
+            summary_file,
+            mode="a",
+            header=False,
+            index=False
+        )
+
+    else:
+
+        summary.to_csv(
+            summary_file,
+            index=False
+        )
 # ==================================================
 
 if __name__ == "__main__":
