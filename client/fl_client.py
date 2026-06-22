@@ -27,8 +27,14 @@ from sklearn.metrics import (
 from models.model_selector import get_model
 
 
-LOCAL_EPOCHS = 3
+# ==================================================
+# CONFIG
+# ==================================================
+
+LOCAL_EPOCHS = 20
+
 BATCH_SIZE = 64
+
 LEARNING_RATE = 0.001
 
 DEVICE = (
@@ -38,14 +44,16 @@ DEVICE = (
 )
 
 
+# ==================================================
+# CLIENT TRAINING FUNCTION
+# ==================================================
+
 def run_client(
-    client_id,
-    dataset_type,
-    partition_type
+        client_id,
+        dataset_type,
+        partition_type,
+        global_weights=None
 ):
-    """
-    Entire client logic goes inside this function.
-    """
 
     print("\n" + "=" * 60)
     print(f"CLIENT {client_id}")
@@ -53,6 +61,10 @@ def run_client(
 
     print(f"Dataset Type : {dataset_type}")
     print(f"Partition    : {partition_type}")
+
+    # ==================================================
+    # LOAD DATA
+    # ==================================================
 
     client_file = (
         f"data/partitions/"
@@ -70,7 +82,7 @@ def run_client(
     print(f"y Shape : {y.shape}")
 
     # ==================================================
-    # TRAIN / TEST SPLIT
+    # TRAIN TEST SPLIT
     # ==================================================
 
     X_train, X_test, y_train, y_test = train_test_split(
@@ -136,6 +148,18 @@ def run_client(
         "cnn",
         num_features
     ).to(DEVICE)
+
+    # ----------------------------------------------
+    # LOAD GLOBAL WEIGHTS
+    # ----------------------------------------------
+
+    if global_weights is not None:
+
+        print("\nLoading Global Weights")
+
+        model.load_state_dict(
+            global_weights
+        )
 
     criterion = nn.BCELoss()
 
@@ -280,6 +304,10 @@ def run_client(
         ground_truth
     ).flatten()
 
+    # ==================================================
+    # METRICS
+    # ==================================================
+
     accuracy = accuracy_score(
         ground_truth,
         predictions
@@ -308,6 +336,10 @@ def run_client(
         predictions
     )
 
+    # ==================================================
+    # CONFUSION MATRIX IMAGE
+    # ==================================================
+
     disp = ConfusionMatrixDisplay(
         confusion_matrix=cm
     )
@@ -322,6 +354,10 @@ def run_client(
     )
 
     plt.close()
+
+    # ==================================================
+    # PRINT RESULTS
+    # ==================================================
 
     print("=" * 60)
     print("LOCAL CLIENT RESULTS")
@@ -347,15 +383,24 @@ def run_client(
         )
     )
 
+    # ==================================================
+    # SAVE METRICS
+    # ==================================================
+
     metrics = {
 
         "client_id": client_id,
+
         "dataset_type": dataset_type,
+
         "partition_type": partition_type,
 
         "accuracy": float(accuracy),
+
         "precision": float(precision),
+
         "recall": float(recall),
+
         "f1_score": float(f1),
 
         "final_loss": float(
@@ -385,8 +430,19 @@ def run_client(
 
     print("\nClient Training Complete.")
 
-    return metrics
+    # ==================================================
+    # RETURN TO SERVER
+    # ==================================================
 
+    return (
+        model.state_dict(),
+        metrics
+    )
+
+
+# ==================================================
+# STANDALONE TEST
+# ==================================================
 
 if __name__ == "__main__":
 
