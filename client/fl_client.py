@@ -1,6 +1,6 @@
 import json
 import os
-
+import copy
 import numpy as np
 import torch
 import torch.nn as nn
@@ -52,7 +52,8 @@ def run_client(
         client_id,
         dataset_type,
         partition_type,
-        global_weights=None
+        global_weights=None,
+        mu=0.01
 ):
 
     print("\n" + "=" * 60)
@@ -142,16 +143,16 @@ def run_client(
     # MODEL
     # ==================================================
 
-    num_features = X.shape[2]
-
     model = get_model(
         "cnn",
-        num_features
+        int(dataset_type)
     ).to(DEVICE)
 
-    # ----------------------------------------------
-    # LOAD GLOBAL WEIGHTS
-    # ----------------------------------------------
+    # ==================================================
+    # LOAD GLOBAL MODEL
+    # ==================================================
+
+    global_model = None
 
     if global_weights is not None:
 
@@ -160,6 +161,16 @@ def run_client(
         model.load_state_dict(
             global_weights
         )
+
+        # Store a frozen copy for FedProx.
+
+        global_model = copy.deepcopy(
+            model
+        )
+
+        for param in global_model.parameters():
+
+            param.requires_grad = False
 
     criterion = nn.BCELoss()
 
@@ -211,10 +222,37 @@ def run_client(
 
             outputs = model(batch_x)
 
-            loss = criterion(
+            classification_loss = criterion(
                 outputs,
                 batch_y
             )
+            loss = classification_loss
+            
+            # ==================================================
+            # FEDPROX REGULARIZATION
+            # ==================================================
+
+            if mu > 0 and global_model is not None:
+
+                proximal_term = 0.0
+
+                for local_param, global_param in zip(
+
+                        model.parameters(),
+                        global_model.parameters()
+
+                ):
+
+                    proximal_term += (
+                        torch.norm(
+                            local_param - global_param,
+                            p=2
+                        ) ** 2
+                    )
+
+                loss += (
+                    mu / 2
+                ) * proximal_term
 
             loss.backward()
 

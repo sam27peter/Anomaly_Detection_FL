@@ -1,0 +1,12 @@
+{
+    "window_size": 100,
+    "stride": 10,
+    "samples": 7113,
+    "shape": [
+        7113,
+        100,
+        55
+    ],
+    "normal_windows": 6032,
+    "anomaly_windows": 1081
+}
