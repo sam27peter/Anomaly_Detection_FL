@@ -1,12 +1,13 @@
-import os
-import json
 import copy
+import json
 import sys
-import numpy as np
+import time
+from pathlib import Path
 
-import torch
 import matplotlib.pyplot as plt
+import numpy as np
 import pandas as pd
+import torch
 
 from sklearn.metrics import (
     accuracy_score,
@@ -24,16 +25,16 @@ from torch.utils.data import (
 
 from client.fl_client import run_client
 from models.model_selector import get_model
-
-
-# ==================================================
-# CONFIG
-# ==================================================
+from utils.logger import logger
 
 from config.federated_config import (
     NUM_CLIENTS,
     NUM_ROUNDS
 )
+
+# ==================================================
+# CONFIG
+# ==================================================
 
 DATASET_TYPE = (
     sys.argv[1]
@@ -47,18 +48,25 @@ PARTITION_TYPE = (
     else "iid"
 )
 
+PROX_MU = 0.01
+
 DEVICE = (
     "cuda"
     if torch.cuda.is_available()
     else "cpu"
 )
 
-
 # ==================================================
-# FEDERATED PROX AGGREGATION
+# FEDERATED AVERAGING
 # ==================================================
 
-def federated_average(local_weights):
+
+def federated_average(
+        local_weights: list
+) -> dict:
+    """
+    Aggregate local client weights.
+    """
 
     avg_weights = copy.deepcopy(
         local_weights[0]
@@ -81,12 +89,19 @@ def federated_average(local_weights):
 # FEDPROX SERVER
 # ==================================================
 
-def run_fedprox():
+def run_fedprox() -> None:
+    """
+    Run FedProx training.
+    """
 
-    print("\nStarting FedProx\n")
+    logger.info("Starting FedProx")
 
-    num_features = int(
-        DATASET_TYPE
+    experiment_start = time.time()
+
+    num_features = (
+        25
+        if DATASET_TYPE == "SMAP"
+        else 55
     )
 
     global_model = get_model(
@@ -95,32 +110,31 @@ def run_fedprox():
     ).to(DEVICE)
 
     global_acc_history = []
-
     global_loss_history = []
 
     final_client_accuracies = []
 
     save_dir = (
-        f"results/federated/fedprox/"
-        f"{PARTITION_TYPE}_{DATASET_TYPE}"
+        Path("results")
+        / "federated"
+        / "fedprox"
+        / f"{PARTITION_TYPE}_{DATASET_TYPE}"
     )
 
-    os.makedirs(
-        save_dir,
+    save_dir.mkdir(
+        parents=True,
         exist_ok=True
     )
 
     # ==================================================
-    # COMMUNICATION NUM_ROUNDS
+    # COMMUNICATION ROUNDS
     # ==================================================
 
     for rnd in range(NUM_ROUNDS):
 
-        print("\n" + "=" * 60)
-        print(
-            f"ROUND {rnd+1}/{NUM_ROUNDS}"
+        logger.info(
+            f"ROUND {rnd + 1}/{NUM_ROUNDS}"
         )
-        print("=" * 60)
 
         local_weights = []
 
@@ -132,15 +146,15 @@ def run_fedprox():
             global_model.state_dict()
         )
 
-        # ------------------------------------------
+        # ---------------------------------------------
 
         for client_id in range(
                 1,
                 NUM_CLIENTS + 1
         ):
 
-            print(
-                f"\nTraining Client {client_id}"
+            logger.info(
+                f"Training Client {client_id}"
             )
 
             weights, metrics = run_client(
@@ -151,12 +165,12 @@ def run_fedprox():
 
                 partition_type=PARTITION_TYPE,
 
-                global_weights=global_weights
+                global_weights=global_weights,
+
+                mu=PROX_MU
             )
 
-            local_weights.append(
-                weights
-            )
+            local_weights.append(weights)
 
             round_acc.append(
                 metrics["accuracy"]
@@ -166,9 +180,9 @@ def run_fedprox():
                 metrics["final_loss"]
             )
 
-        # ------------------------------------------
-        # FEDPROX AGGREGATION
-        # ------------------------------------------
+        # ---------------------------------------------
+        # AGGREGATION
+        # ---------------------------------------------
 
         averaged_weights = (
             federated_average(
@@ -196,12 +210,10 @@ def run_fedprox():
             float(round_global_loss)
         )
 
-        final_client_accuracies = (
-            round_acc
-        )
+        final_client_accuracies = round_acc
 
-        print(
-            f"\nRound Accuracy : "
+        logger.info(
+            f"Round Accuracy : "
             f"{round_global_acc:.4f}"
         )
 
@@ -209,12 +221,11 @@ def run_fedprox():
     # GLOBAL EVALUATION
     # ==================================================
 
-    print("\n" + "=" * 60)
-    print("GLOBAL MODEL EVALUATION")
-    print("=" * 60)
+    logger.info(
+        "Evaluating Global Model"
+    )
 
     all_X = []
-
     all_y = []
 
     for client_id in range(
@@ -223,9 +234,10 @@ def run_fedprox():
     ):
 
         client_file = (
-            f"data/partitions/"
-            f"{PARTITION_TYPE}_{DATASET_TYPE}/"
-            f"client_{client_id}.npz"
+            Path("data")
+            / "partitions"
+            / f"{PARTITION_TYPE}_{DATASET_TYPE}"
+            / f"client_{client_id}.npz"
         )
 
         data = np.load(
@@ -272,7 +284,6 @@ def run_fedprox():
     global_model.eval()
 
     predictions = []
-
     ground_truth = []
 
     with torch.no_grad():
@@ -307,6 +318,10 @@ def run_fedprox():
         ground_truth
     ).flatten()
 
+    # ==================================================
+    # METRICS
+    # ==================================================
+
     global_accuracy = accuracy_score(
         ground_truth,
         predictions
@@ -335,47 +350,33 @@ def run_fedprox():
         predictions
     )
 
-    print(f"Global Accuracy : {global_accuracy:.4f}")
-    print(f"Global Precision: {global_precision:.4f}")
-    print(f"Global Recall   : {global_recall:.4f}")
-    print(f"Global F1 Score : {global_f1:.4f}")
-
-    print("\nGlobal Confusion Matrix")
-    print(global_cm)
-
-    # ==================================================
-    # GLOBAL CONFUSION MATRIX IMAGE
-    # ==================================================
-
-    disp = ConfusionMatrixDisplay(
-        confusion_matrix=global_cm
+    total_training_time = (
+        time.time()
+        - experiment_start
     )
 
-    disp.plot()
-
-    plt.title(
-        "Global Confusion Matrix"
+    client_accuracy_std = np.std(
+        final_client_accuracies
     )
 
-    plt.savefig(
-        os.path.join(
-            save_dir,
-            "global_confusion_matrix.png"
-        )
+    accuracy_gap = (
+            max(final_client_accuracies)
+            -
+            min(final_client_accuracies)
     )
 
-    plt.close()
+    logger.info(
+        f"Global Accuracy : "
+        f"{global_accuracy:.4f}"
+    )
 
     # ==================================================
-    # SAVE GLOBAL MODEL
+    # SAVE MODEL
     # ==================================================
 
     torch.save(
         global_model.state_dict(),
-        os.path.join(
-            save_dir,
-            "global_model.pth"
-        )
+        save_dir / "global_model.pth"
     )
 
     # ==================================================
@@ -395,10 +396,7 @@ def run_fedprox():
     }
 
     with open(
-            os.path.join(
-                save_dir,
-                "history.json"
-            ),
+            save_dir / "history.json",
             "w"
     ) as f:
 
@@ -420,6 +418,12 @@ def run_fedprox():
         "partition_type":
             PARTITION_TYPE,
 
+        "algorithm":
+            "FedProx",
+
+        "prox_mu":
+            PROX_MU,
+
         "num_clients":
             NUM_CLIENTS,
 
@@ -438,15 +442,21 @@ def run_fedprox():
         "global_f1_score":
             float(global_f1),
 
+        "training_time_sec":
+            float(total_training_time),
+
+        "client_accuracy_std":
+            float(client_accuracy_std),
+
+        "accuracy_gap":
+            float(accuracy_gap),
+
         "confusion_matrix":
             global_cm.tolist()
     }
 
     with open(
-            os.path.join(
-                save_dir,
-                "metrics.json"
-            ),
+            save_dir / "metrics.json",
             "w"
     ) as f:
 
@@ -455,6 +465,23 @@ def run_fedprox():
             f,
             indent=4
         )
+
+    # ==================================================
+    # CONFUSION MATRIX
+    # ==================================================
+
+    disp = ConfusionMatrixDisplay(
+        confusion_matrix=global_cm
+    )
+
+    disp.plot()
+
+    plt.savefig(
+        save_dir
+        / "global_confusion_matrix.png"
+    )
+
+    plt.close()
 
     # ==================================================
     # ACCURACY CURVE
@@ -477,10 +504,8 @@ def run_fedprox():
     plt.grid()
 
     plt.savefig(
-        os.path.join(
-            save_dir,
-            "accuracy_curve.png"
-        )
+        save_dir
+        / "accuracy_curve.png"
     )
 
     plt.close()
@@ -506,16 +531,14 @@ def run_fedprox():
     plt.grid()
 
     plt.savefig(
-        os.path.join(
-            save_dir,
-            "loss_curve.png"
-        )
+        save_dir
+        / "loss_curve.png"
     )
 
     plt.close()
 
     # ==================================================
-    # CLIENT ACCURACY PLOT
+    # CLIENT ACCURACY
     # ==================================================
 
     plt.figure()
@@ -523,7 +546,10 @@ def run_fedprox():
     plt.bar(
         [
             f"C{i}"
-            for i in range(1, 6)
+            for i in range(
+                1,
+                NUM_CLIENTS + 1
+            )
         ],
         final_client_accuracies
     )
@@ -537,44 +563,48 @@ def run_fedprox():
     )
 
     plt.savefig(
-        os.path.join(
-            save_dir,
-            "client_accuracy.png"
-        )
+        save_dir
+        / "client_accuracy.png"
     )
 
     plt.close()
 
+    # ==================================================
+    # SUMMARY CSV
+    # ==================================================
+
     summary_file = (
-        "results/federated/"
-        "fedprox_summary.csv"
+        Path("results")
+        / "federated"
+        / "fedprox_summary.csv"
     )
 
-    summary = pd.DataFrame([
+    summary = pd.DataFrame([{
 
-        {
-            "dataset":
-                DATASET_TYPE,
+        "dataset":
+            DATASET_TYPE,
 
-            "partition":
-                PARTITION_TYPE,
+        "partition":
+            PARTITION_TYPE,
 
-            "accuracy":
-                global_accuracy,
+        "accuracy":
+            global_accuracy,
 
-            "precision":
-                global_precision,
+        "precision":
+            global_precision,
 
-            "recall":
-                global_recall,
+        "recall":
+            global_recall,
 
-            "f1":
-                global_f1
+        "f1":
+            global_f1,
 
-        }
-    ])
+        "training_time":
+            total_training_time
 
-    if os.path.exists(summary_file):
+    }])
+
+    if summary_file.exists():
 
         summary.to_csv(
             summary_file,
@@ -590,7 +620,9 @@ def run_fedprox():
             index=False
         )
 
-    print("\nFedProx Completed")
+    logger.info(
+        "FedProx Completed"
+    )
 
 
 if __name__ == "__main__":

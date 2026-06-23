@@ -1,18 +1,21 @@
-import os
-import json
 import copy
+import json
 import sys
-import numpy as np
+import time
+from pathlib import Path
 
-import torch
 import matplotlib.pyplot as plt
+import numpy as np
+import pandas as pd
+import torch
 
 from sklearn.metrics import (
     accuracy_score,
     precision_score,
     recall_score,
     f1_score,
-    confusion_matrix
+    confusion_matrix,
+    ConfusionMatrixDisplay
 )
 
 from torch.utils.data import (
@@ -22,16 +25,16 @@ from torch.utils.data import (
 
 from client.fl_client import run_client
 from models.model_selector import get_model
-
-
-# ==================================================
-# CONFIG
-# ==================================================
+from utils.logger import logger
 
 from config.federated_config import (
     NUM_CLIENTS,
     NUM_ROUNDS
 )
+
+# ==================================================
+# CONFIG
+# ==================================================
 
 DATASET_TYPE = (
     sys.argv[1]
@@ -51,12 +54,27 @@ DEVICE = (
     else "cpu"
 )
 
-
 # ==================================================
 # FEDERATED AVERAGING
 # ==================================================
 
-def federated_average(local_weights):
+
+def federated_average(
+        local_weights: list
+) -> dict:
+    """
+    Aggregate local client weights.
+
+    Parameters
+    ----------
+    local_weights : list
+        List of client model weights.
+
+    Returns
+    -------
+    dict
+        Averaged global weights.
+    """
 
     avg_weights = copy.deepcopy(
         local_weights[0]
@@ -65,14 +83,11 @@ def federated_average(local_weights):
     for key in avg_weights.keys():
 
         avg_weights[key] = torch.stack(
-
             [
                 w[key].float()
                 for w in local_weights
             ],
-
             dim=0
-
         ).mean(dim=0)
 
     return avg_weights
@@ -82,12 +97,19 @@ def federated_average(local_weights):
 # FEDAVG SERVER
 # ==================================================
 
-def run_fedavg():
+def run_fedavg() -> None:
+    """
+    Run FedAvg training.
+    """
 
-    print("\nStarting FedAvg\n")
+    logger.info("Starting FedAvg")
 
-    num_features = int(
-        DATASET_TYPE
+    start_time = time.time()
+
+    num_features = (
+        25
+        if DATASET_TYPE == "SMAP"
+        else 55
     )
 
     global_model = get_model(
@@ -96,54 +118,50 @@ def run_fedavg():
     ).to(DEVICE)
 
     global_acc_history = []
-
     global_loss_history = []
 
     final_client_accuracies = []
 
     save_dir = (
-        f"results/federated/fedavg/"
-        f"{PARTITION_TYPE}_{DATASET_TYPE}"
+        Path("results")
+        / "federated"
+        / "fedavg"
+        / f"{PARTITION_TYPE}_{DATASET_TYPE}"
     )
 
-    os.makedirs(
-        save_dir,
+    save_dir.mkdir(
+        parents=True,
         exist_ok=True
     )
 
     # ==================================================
-    # COMMUNICATION ROUNDS
+    # ROUNDS
     # ==================================================
 
     for rnd in range(NUM_ROUNDS):
 
-        print("\n" + "=" * 60)
-
-        print(
-            f"ROUND {rnd+1}/{NUM_ROUNDS}"
+        logger.info(
+            f"ROUND {rnd + 1}/{NUM_ROUNDS}"
         )
-
-        print("=" * 60)
 
         local_weights = []
 
         round_acc = []
-
         round_loss = []
 
         global_weights = copy.deepcopy(
             global_model.state_dict()
         )
 
-        # ------------------------------------------
+        # ---------------------------------------------
 
         for client_id in range(
                 1,
                 NUM_CLIENTS + 1
         ):
 
-            print(
-                f"\nTraining Client {client_id}"
+            logger.info(
+                f"Training Client {client_id}"
             )
 
             weights, metrics = run_client(
@@ -157,9 +175,7 @@ def run_fedavg():
                 global_weights=global_weights
             )
 
-            local_weights.append(
-                weights
-            )
+            local_weights.append(weights)
 
             round_acc.append(
                 metrics["accuracy"]
@@ -169,9 +185,9 @@ def run_fedavg():
                 metrics["final_loss"]
             )
 
-        # ------------------------------------------
-        # FEDAVG AGGREGATION
-        # ------------------------------------------
+        # ---------------------------------------------
+        # AGGREGATION
+        # ---------------------------------------------
 
         averaged_weights = (
             federated_average(
@@ -199,12 +215,10 @@ def run_fedavg():
             float(round_global_loss)
         )
 
-        final_client_accuracies = (
-            round_acc
-        )
+        final_client_accuracies = round_acc
 
-        print(
-            f"\nRound Accuracy : "
+        logger.info(
+            f"Round Accuracy : "
             f"{round_global_acc:.4f}"
         )
 
@@ -212,16 +226,11 @@ def run_fedavg():
     # GLOBAL EVALUATION
     # ==================================================
 
-    print("\n" + "=" * 60)
-
-    print(
-        "GLOBAL MODEL EVALUATION"
+    logger.info(
+        "Evaluating Global Model"
     )
 
-    print("=" * 60)
-
     all_X = []
-
     all_y = []
 
     for client_id in range(
@@ -230,22 +239,16 @@ def run_fedavg():
     ):
 
         client_file = (
-            f"data/partitions/"
-            f"{PARTITION_TYPE}_{DATASET_TYPE}/"
-            f"client_{client_id}.npz"
+            Path("data")
+            / "partitions"
+            / f"{PARTITION_TYPE}_{DATASET_TYPE}"
+            / f"client_{client_id}.npz"
         )
 
-        data = np.load(
-            client_file
-        )
+        data = np.load(client_file)
 
-        all_X.append(
-            data["X"]
-        )
-
-        all_y.append(
-            data["y"]
-        )
+        all_X.append(data["X"])
+        all_y.append(data["y"])
 
     X = np.concatenate(
         all_X,
@@ -268,21 +271,14 @@ def run_fedavg():
     )
 
     test_loader = DataLoader(
-
-        TensorDataset(
-            X,
-            y
-        ),
-
+        TensorDataset(X, y),
         batch_size=64,
-
         shuffle=False
     )
 
     global_model.eval()
 
     predictions = []
-
     ground_truth = []
 
     with torch.no_grad():
@@ -317,6 +313,10 @@ def run_fedavg():
         ground_truth
     ).flatten()
 
+    # ==================================================
+    # METRICS
+    # ==================================================
+
     global_accuracy = accuracy_score(
         ground_truth,
         predictions
@@ -345,70 +345,36 @@ def run_fedavg():
         predictions
     )
 
-    print(
-        f"Global Accuracy : {global_accuracy:.4f}"
+    training_time = (
+        time.time() - start_time
     )
 
-    print(
-        f"Global Precision: {global_precision:.4f}"
+    accuracy_std = np.std(
+        final_client_accuracies
     )
 
-    print(
-        f"Global Recall   : {global_recall:.4f}"
+    accuracy_gap = (
+            max(final_client_accuracies)
+            -
+            min(final_client_accuracies)
     )
 
-    print(
-        f"Global F1 Score : {global_f1:.4f}"
+    logger.info(
+        f"Global Accuracy : "
+        f"{global_accuracy:.4f}"
     )
-
-    print("\nGlobal Confusion Matrix")
-
-    print(global_cm)
-
-    # ==================================================
-    # GLOBAL CONFUSION MATRIX IMAGE
-    # ==================================================
-
-    from sklearn.metrics import (
-        ConfusionMatrixDisplay
-    )
-
-    disp = ConfusionMatrixDisplay(
-        confusion_matrix=global_cm
-    )
-
-    disp.plot()
-
-    plt.title(
-        "Global Confusion Matrix"
-    )
-
-    plt.savefig(
-
-        os.path.join(
-            save_dir,
-            "global_confusion_matrix.png"
-        )
-    )
-
-    plt.close()
 
     # ==================================================
     # SAVE MODEL
     # ==================================================
 
     torch.save(
-
         global_model.state_dict(),
-
-        os.path.join(
-            save_dir,
-            "global_model.pth"
-        )
+        save_dir / "global_model.pth"
     )
 
     # ==================================================
-    # SAVE HISTORY
+    # HISTORY
     # ==================================================
 
     history = {
@@ -424,14 +390,8 @@ def run_fedavg():
     }
 
     with open(
-
-            os.path.join(
-                save_dir,
-                "history.json"
-            ),
-
+            save_dir / "history.json",
             "w"
-
     ) as f:
 
         json.dump(
@@ -441,7 +401,7 @@ def run_fedavg():
         )
 
     # ==================================================
-    # SAVE METRICS
+    # METRICS
     # ==================================================
 
     metrics = {
@@ -470,19 +430,22 @@ def run_fedavg():
         "global_f1_score":
             float(global_f1),
 
+        "training_time_sec":
+            float(training_time),
+
+        "client_accuracy_std":
+            float(accuracy_std),
+
+        "accuracy_gap":
+            float(accuracy_gap),
+
         "confusion_matrix":
             global_cm.tolist()
     }
 
     with open(
-
-            os.path.join(
-                save_dir,
-                "metrics.json"
-            ),
-
+            save_dir / "metrics.json",
             "w"
-
     ) as f:
 
         json.dump(
@@ -490,6 +453,23 @@ def run_fedavg():
             f,
             indent=4
         )
+
+    # ==================================================
+    # CONFUSION MATRIX
+    # ==================================================
+
+    disp = ConfusionMatrixDisplay(
+        confusion_matrix=global_cm
+    )
+
+    disp.plot()
+
+    plt.savefig(
+        save_dir
+        / "global_confusion_matrix.png"
+    )
+
+    plt.close()
 
     # ==================================================
     # ACCURACY CURVE
@@ -506,22 +486,13 @@ def run_fedavg():
         "Global Accuracy vs Round"
     )
 
-    plt.xlabel(
-        "Round"
-    )
-
-    plt.ylabel(
-        "Accuracy"
-    )
+    plt.xlabel("Round")
+    plt.ylabel("Accuracy")
 
     plt.grid()
 
     plt.savefig(
-
-        os.path.join(
-            save_dir,
-            "accuracy_curve.png"
-        )
+        save_dir / "accuracy_curve.png"
     )
 
     plt.close()
@@ -541,39 +512,31 @@ def run_fedavg():
         "Global Loss vs Round"
     )
 
-    plt.xlabel(
-        "Round"
-    )
-
-    plt.ylabel(
-        "Loss"
-    )
+    plt.xlabel("Round")
+    plt.ylabel("Loss")
 
     plt.grid()
 
     plt.savefig(
-
-        os.path.join(
-            save_dir,
-            "loss_curve.png"
-        )
+        save_dir / "loss_curve.png"
     )
 
     plt.close()
 
     # ==================================================
-    # CLIENT ACCURACY PLOT
+    # CLIENT ACCURACY
     # ==================================================
 
     plt.figure()
 
     plt.bar(
-
         [
             f"C{i}"
-            for i in range(1, 6)
+            for i in range(
+                1,
+                NUM_CLIENTS + 1
+            )
         ],
-
         final_client_accuracies
     )
 
@@ -586,23 +549,21 @@ def run_fedavg():
     )
 
     plt.savefig(
-
-        os.path.join(
-            save_dir,
-            "client_accuracy.png"
-        )
+        save_dir
+        / "client_accuracy.png"
     )
 
     plt.close()
 
-    print("\nFedAvg Completed")
+    # ==================================================
+    # SUMMARY CSV
+    # ==================================================
 
     summary_file = (
-        "results/federated/"
-        "fedavg_summary.csv"
+        Path("results")
+        / "federated"
+        / "fedavg_summary.csv"
     )
-
-    import pandas as pd
 
     summary = pd.DataFrame([{
 
@@ -622,11 +583,14 @@ def run_fedavg():
             global_recall,
 
         "f1":
-            global_f1
+            global_f1,
+
+        "training_time":
+            training_time
 
     }])
 
-    if os.path.exists(summary_file):
+    if summary_file.exists():
 
         summary.to_csv(
             summary_file,
@@ -641,7 +605,11 @@ def run_fedavg():
             summary_file,
             index=False
         )
-# ==================================================
+
+    logger.info(
+        "FedAvg Completed"
+    )
+
 
 if __name__ == "__main__":
 
