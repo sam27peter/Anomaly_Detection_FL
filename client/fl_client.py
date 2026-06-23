@@ -1,19 +1,12 @@
-import json
-import os
 import copy
+import json
+import time
+from pathlib import Path
+
+import matplotlib.pyplot as plt
 import numpy as np
 import torch
 import torch.nn as nn
-import matplotlib.pyplot as plt
-
-from torch.utils.data import (
-    DataLoader,
-    TensorDataset
-)
-
-from sklearn.model_selection import (
-    train_test_split
-)
 
 from sklearn.metrics import (
     accuracy_score,
@@ -21,21 +14,32 @@ from sklearn.metrics import (
     recall_score,
     f1_score,
     confusion_matrix,
-    ConfusionMatrixDisplay
+    ConfusionMatrixDisplay,
+    roc_auc_score,
+    precision_recall_curve,
+    auc
 )
 
-from models.model_selector import get_model
+from sklearn.model_selection import train_test_split
 
-
-# ==================================================
-# CONFIG
-# ==================================================
+from torch.utils.data import (
+    DataLoader,
+    TensorDataset
+)
 
 from config.federated_config import (
     LOCAL_EPOCHS,
     BATCH_SIZE,
     LEARNING_RATE
 )
+
+from models.model_selector import get_model
+from utils.logger import logger
+
+
+# ==================================================
+# DEVICE CONFIGURATION
+# ==================================================
 
 DEVICE = (
     "cuda"
@@ -49,38 +53,68 @@ DEVICE = (
 # ==================================================
 
 def run_client(
-        client_id,
-        dataset_type,
-        partition_type,
-        global_weights=None,
-        mu=0.01
-):
+        client_id: int,
+        dataset_type: str,
+        partition_type: str,
+        global_weights: dict | None = None,
+        mu: float = 0.01
+) -> tuple:
+    """
+    Train a local federated client.
 
-    print("\n" + "=" * 60)
-    print(f"CLIENT {client_id}")
-    print("=" * 60)
+    Parameters
+    ----------
+    client_id : int
+        Client identifier.
 
-    print(f"Dataset Type : {dataset_type}")
-    print(f"Partition    : {partition_type}")
+    dataset_type : str
+        Dataset type (SMAP/MSL).
+
+    partition_type : str
+        IID or non_iid.
+
+    global_weights : dict, optional
+        Global model weights from server.
+
+    mu : float, optional
+        FedProx regularization coefficient.
+
+    Returns
+    -------
+    tuple
+        (model_weights, metrics)
+    """
+
+    logger.info("=" * 60)
+    logger.info(f"CLIENT {client_id}")
+    logger.info("=" * 60)
+
+    logger.info(f"Dataset Type : {dataset_type}")
+    logger.info(f"Partition    : {partition_type}")
 
     # ==================================================
     # LOAD DATA
     # ==================================================
 
     client_file = (
-        f"data/partitions/"
-        f"{partition_type}_{dataset_type}/"
-        f"client_{client_id}.npz"
+        Path("data")
+        / "partitions"
+        / f"{partition_type}_{dataset_type}"
+        / f"client_{client_id}.npz"
     )
+
+    if not client_file.exists():
+        raise FileNotFoundError(
+            f"Client dataset not found: {client_file}"
+        )
 
     data = np.load(client_file)
 
     X = data["X"]
     y = data["y"]
 
-    print("\nLoaded Client Data")
-    print(f"X Shape : {X.shape}")
-    print(f"y Shape : {y.shape}")
+    logger.info(f"X Shape : {X.shape}")
+    logger.info(f"y Shape : {y.shape}")
 
     # ==================================================
     # TRAIN TEST SPLIT
@@ -123,19 +157,13 @@ def run_client(
     # ==================================================
 
     train_loader = DataLoader(
-        TensorDataset(
-            X_train,
-            y_train
-        ),
+        TensorDataset(X_train, y_train),
         batch_size=BATCH_SIZE,
         shuffle=True
     )
 
     test_loader = DataLoader(
-        TensorDataset(
-            X_test,
-            y_test
-        ),
+        TensorDataset(X_test, y_test),
         batch_size=BATCH_SIZE
     )
 
@@ -143,9 +171,11 @@ def run_client(
     # MODEL
     # ==================================================
 
+    num_features = X.shape[2]
+
     model = get_model(
         "cnn",
-        int(dataset_type)
+        num_features
     ).to(DEVICE)
 
     # ==================================================
@@ -156,20 +186,13 @@ def run_client(
 
     if global_weights is not None:
 
-        print("\nLoading Global Weights")
+        logger.info("Loading Global Weights")
 
-        model.load_state_dict(
-            global_weights
-        )
+        model.load_state_dict(global_weights)
 
-        # Store a frozen copy for FedProx.
-
-        global_model = copy.deepcopy(
-            model
-        )
+        global_model = copy.deepcopy(model)
 
         for param in global_model.parameters():
-
             param.requires_grad = False
 
     criterion = nn.BCELoss()
@@ -184,13 +207,15 @@ def run_client(
     # ==================================================
 
     save_dir = (
-        f"results/federated/local_clients/"
-        f"{partition_type}_{dataset_type}/"
-        f"client_{client_id}"
+        Path("results")
+        / "federated"
+        / "local_clients"
+        / f"{partition_type}_{dataset_type}"
+        / f"client_{client_id}"
     )
 
-    os.makedirs(
-        save_dir,
+    save_dir.mkdir(
+        parents=True,
         exist_ok=True
     )
 
@@ -198,7 +223,9 @@ def run_client(
     # TRAINING
     # ==================================================
 
-    print("\nTraining...\n")
+    logger.info("Training Started")
+
+    start_time = time.time()
 
     loss_history = []
 
@@ -226,8 +253,9 @@ def run_client(
                 outputs,
                 batch_y
             )
+
             loss = classification_loss
-            
+
             # ==================================================
             # FEDPROX REGULARIZATION
             # ==================================================
@@ -237,10 +265,8 @@ def run_client(
                 proximal_term = 0.0
 
                 for local_param, global_param in zip(
-
                         model.parameters(),
                         global_model.parameters()
-
                 ):
 
                     proximal_term += (
@@ -261,18 +287,19 @@ def run_client(
             epoch_loss += loss.item()
 
         avg_loss = (
-            epoch_loss /
-            len(train_loader)
+            epoch_loss / len(train_loader)
         )
 
-        loss_history.append(
-            float(avg_loss)
-        )
+        loss_history.append(float(avg_loss))
 
-        print(
-            f"Epoch [{epoch+1}/{LOCAL_EPOCHS}] "
+        logger.info(
+            f"Epoch [{epoch + 1}/{LOCAL_EPOCHS}] "
             f"Loss: {avg_loss:.4f}"
         )
+
+    training_time = (
+        time.time() - start_time
+    )
 
     # ==================================================
     # LOSS CURVE
@@ -295,10 +322,7 @@ def run_client(
     plt.grid()
 
     plt.savefig(
-        os.path.join(
-            save_dir,
-            "loss_curve.png"
-        )
+        save_dir / "loss_curve.png"
     )
 
     plt.close()
@@ -307,11 +331,12 @@ def run_client(
     # EVALUATION
     # ==================================================
 
-    print("\nEvaluating...\n")
+    logger.info("Evaluating Client")
 
     model.eval()
 
     predictions = []
+    probabilities = []
     ground_truth = []
 
     with torch.no_grad():
@@ -330,17 +355,17 @@ def run_client(
                 preds.cpu().numpy()
             )
 
+            probabilities.extend(
+                outputs.cpu().numpy()
+            )
+
             ground_truth.extend(
                 batch_y.numpy()
             )
 
-    predictions = np.array(
-        predictions
-    ).flatten()
-
-    ground_truth = np.array(
-        ground_truth
-    ).flatten()
+    predictions = np.array(predictions).flatten()
+    probabilities = np.array(probabilities).flatten()
+    ground_truth = np.array(ground_truth).flatten()
 
     # ==================================================
     # METRICS
@@ -369,13 +394,30 @@ def run_client(
         zero_division=0
     )
 
+    roc_auc = roc_auc_score(
+        ground_truth,
+        probabilities
+    )
+
+    precision_curve, recall_curve, _ = (
+        precision_recall_curve(
+            ground_truth,
+            probabilities
+        )
+    )
+
+    pr_auc = auc(
+        recall_curve,
+        precision_curve
+    )
+
     cm = confusion_matrix(
         ground_truth,
         predictions
     )
 
     # ==================================================
-    # CONFUSION MATRIX IMAGE
+    # CONFUSION MATRIX
     # ==================================================
 
     disp = ConfusionMatrixDisplay(
@@ -385,29 +427,26 @@ def run_client(
     disp.plot()
 
     plt.savefig(
-        os.path.join(
-            save_dir,
-            "confusion_matrix.png"
-        )
+        save_dir / "confusion_matrix.png"
     )
 
     plt.close()
 
-    # ==================================================
-    # PRINT RESULTS
-    # ==================================================
+    logger.info(
+        f"Accuracy : {accuracy:.4f}"
+    )
 
-    print("=" * 60)
-    print("LOCAL CLIENT RESULTS")
-    print("=" * 60)
+    logger.info(
+        f"Precision : {precision:.4f}"
+    )
 
-    print(f"Accuracy  : {accuracy:.4f}")
-    print(f"Precision : {precision:.4f}")
-    print(f"Recall    : {recall:.4f}")
-    print(f"F1 Score  : {f1:.4f}")
+    logger.info(
+        f"Recall : {recall:.4f}"
+    )
 
-    print("\nConfusion Matrix")
-    print(cm)
+    logger.info(
+        f"F1 Score : {f1:.4f}"
+    )
 
     # ==================================================
     # SAVE MODEL
@@ -415,10 +454,7 @@ def run_client(
 
     torch.save(
         model.state_dict(),
-        os.path.join(
-            save_dir,
-            "local_model.pth"
-        )
+        save_dir / "local_model.pth"
     )
 
     # ==================================================
@@ -441,8 +477,16 @@ def run_client(
 
         "f1_score": float(f1),
 
+        "roc_auc": float(roc_auc),
+
+        "pr_auc": float(pr_auc),
+
         "final_loss": float(
             loss_history[-1]
+        ),
+
+        "training_time_sec": float(
+            training_time
         ),
 
         "confusion_matrix":
@@ -453,11 +497,8 @@ def run_client(
     }
 
     with open(
-        os.path.join(
-            save_dir,
-            "metrics.json"
-        ),
-        "w"
+            save_dir / "metrics.json",
+            "w"
     ) as f:
 
         json.dump(
@@ -466,11 +507,9 @@ def run_client(
             indent=4
         )
 
-    print("\nClient Training Complete.")
-
-    # ==================================================
-    # RETURN TO SERVER
-    # ==================================================
+    logger.info(
+        "Client Training Complete"
+    )
 
     return (
         model.state_dict(),
@@ -486,6 +525,6 @@ if __name__ == "__main__":
 
     run_client(
         client_id=1,
-        dataset_type="25",
+        dataset_type="SMAP",
         partition_type="iid"
     )
