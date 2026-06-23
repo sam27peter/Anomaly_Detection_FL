@@ -1,6 +1,7 @@
 import sys
 import json
-import os
+import time
+from pathlib import Path
 
 import numpy as np
 
@@ -21,12 +22,14 @@ from sklearn.metrics import (
     precision_score,
     recall_score,
     f1_score,
-    confusion_matrix
+    confusion_matrix,
+    roc_auc_score,
+    precision_recall_curve,
+    auc
 )
 
-from models.model_selector import (
-    get_model
-)
+from models.model_selector import get_model
+from utils.logger import logger
 
 # ==================================================
 # CONFIG
@@ -39,9 +42,7 @@ DATASET_TYPE = (
 )
 
 BATCH_SIZE = 64
-
 EPOCHS = 20
-
 LEARNING_RATE = 0.001
 
 DEVICE = (
@@ -51,21 +52,30 @@ DEVICE = (
 )
 
 # ==================================================
-# CREATE OUTPUT FOLDERS
+# OUTPUT DIRECTORIES
 # ==================================================
 
-os.makedirs(
-    "results/single_machine/models",
+BASE_DIR = (
+    Path("results")
+    / "single_machine"
+)
+
+MODELS_DIR = BASE_DIR / "models"
+METRICS_DIR = BASE_DIR / "metrics"
+HISTORY_DIR = BASE_DIR / "history"
+
+MODELS_DIR.mkdir(
+    parents=True,
     exist_ok=True
 )
 
-os.makedirs(
-    "results/single_machine/metrics",
+METRICS_DIR.mkdir(
+    parents=True,
     exist_ok=True
 )
 
-os.makedirs(
-    "results/single_machine/history",
+HISTORY_DIR.mkdir(
+    parents=True,
     exist_ok=True
 )
 
@@ -74,25 +84,21 @@ os.makedirs(
 # ==================================================
 
 dataset_dir = (
-    f"data/processed/{DATASET_TYPE}"
+    Path("data")
+    / "processed"
+    / DATASET_TYPE
 )
 
 X = np.load(
-    os.path.join(
-        dataset_dir,
-        f"X_{DATASET_TYPE}.npy"
-    )
+    dataset_dir / f"X_{DATASET_TYPE}.npy"
 )
 
 y = np.load(
-    os.path.join(
-        dataset_dir,
-        f"y_{DATASET_TYPE}.npy"
-    )
+    dataset_dir / f"y_{DATASET_TYPE}.npy"
 )
 
-print(
-    f"\nDataset Shape: {X.shape}"
+logger.info(
+    f"Dataset Shape: {X.shape}"
 )
 
 # ==================================================
@@ -108,7 +114,7 @@ X_train, X_test, y_train, y_test = train_test_split(
 )
 
 # ==================================================
-# CONVERT TO TENSORS
+# TENSORS
 # ==================================================
 
 X_train = torch.tensor(
@@ -174,10 +180,11 @@ optimizer = torch.optim.Adam(
 # TRAINING
 # ==================================================
 
-print("\nStarting Training...\n")
+logger.info("Starting Centralized Training")
+
+start_time = time.time()
 
 loss_history = []
-
 accuracy_history = []
 
 for epoch in range(EPOCHS):
@@ -185,16 +192,12 @@ for epoch in range(EPOCHS):
     model.train()
 
     epoch_loss = 0
-
     correct = 0
-
     total = 0
 
     for batch_x, batch_y in train_loader:
 
-        batch_x = batch_x.to(
-            DEVICE
-        )
+        batch_x = batch_x.to(DEVICE)
 
         batch_y = (
             batch_y
@@ -204,9 +207,7 @@ for epoch in range(EPOCHS):
 
         optimizer.zero_grad()
 
-        outputs = model(
-            batch_x
-        )
+        outputs = model(batch_x)
 
         loss = criterion(
             outputs,
@@ -227,13 +228,10 @@ for epoch in range(EPOCHS):
             preds == batch_y
         ).sum().item()
 
-        total += (
-            batch_y.size(0)
-        )
+        total += batch_y.size(0)
 
     avg_loss = (
-        epoch_loss /
-        len(train_loader)
+        epoch_loss / len(train_loader)
     )
 
     epoch_accuracy = (
@@ -248,35 +246,35 @@ for epoch in range(EPOCHS):
         float(epoch_accuracy)
     )
 
-    print(
-        f"Epoch [{epoch+1}/{EPOCHS}] "
+    logger.info(
+        f"Epoch [{epoch + 1}/{EPOCHS}] "
         f"Loss: {avg_loss:.4f} "
         f"Accuracy: {epoch_accuracy:.4f}"
     )
+
+training_time = (
+    time.time() - start_time
+)
 
 # ==================================================
 # EVALUATION
 # ==================================================
 
-print("\nEvaluating...\n")
+logger.info("Evaluating Model")
 
 model.eval()
 
 predictions = []
-
+probabilities = []
 ground_truth = []
 
 with torch.no_grad():
 
     for batch_x, batch_y in test_loader:
 
-        batch_x = batch_x.to(
-            DEVICE
-        )
+        batch_x = batch_x.to(DEVICE)
 
-        outputs = model(
-            batch_x
-        )
+        outputs = model(batch_x)
 
         preds = (
             outputs > 0.5
@@ -286,12 +284,20 @@ with torch.no_grad():
             preds.cpu().numpy()
         )
 
+        probabilities.extend(
+            outputs.cpu().numpy()
+        )
+
         ground_truth.extend(
             batch_y.numpy()
         )
 
 predictions = np.array(
     predictions
+).flatten()
+
+probabilities = np.array(
+    probabilities
 ).flatten()
 
 ground_truth = np.array(
@@ -325,46 +331,76 @@ f1 = f1_score(
     zero_division=0
 )
 
+roc_auc = roc_auc_score(
+    ground_truth,
+    probabilities
+)
+
+precision_curve, recall_curve, _ = (
+    precision_recall_curve(
+        ground_truth,
+        probabilities
+    )
+)
+
+pr_auc = auc(
+    recall_curve,
+    precision_curve
+)
+
 cm = confusion_matrix(
     ground_truth,
     predictions
 )
 
+tn, fp, fn, tp = cm.ravel()
+
+fpr = fp / (fp + tn)
+fnr = fn / (fn + tp)
+
 # ==================================================
-# PRINT RESULTS
+# LOG RESULTS
 # ==================================================
 
-print("\n==========================")
-print("CENTRALIZED CNN RESULTS")
-print("==========================")
+logger.info("=" * 50)
+logger.info("CENTRALIZED CNN RESULTS")
+logger.info("=" * 50)
 
-print(
-    f"Accuracy  : {accuracy:.4f}"
+logger.info(
+    f"Accuracy : {accuracy:.4f}"
 )
 
-print(
+logger.info(
     f"Precision : {precision:.4f}"
 )
 
-print(
-    f"Recall    : {recall:.4f}"
+logger.info(
+    f"Recall : {recall:.4f}"
 )
 
-print(
-    f"F1 Score  : {f1:.4f}"
+logger.info(
+    f"F1 Score : {f1:.4f}"
 )
 
-print("\nConfusion Matrix")
+logger.info(
+    f"ROC-AUC : {roc_auc:.4f}"
+)
 
-print(cm)
+logger.info(
+    f"PR-AUC : {pr_auc:.4f}"
+)
+
+logger.info(
+    f"Training Time : {training_time:.2f} sec"
+)
 
 # ==================================================
 # SAVE MODEL
 # ==================================================
 
 model_path = (
-    f"results/single_machine/models/"
-    f"cnn_{DATASET_TYPE}.pth"
+    MODELS_DIR
+    / f"cnn_{DATASET_TYPE}.pth"
 )
 
 torch.save(
@@ -378,21 +414,24 @@ torch.save(
 
 history = {
 
-    "dataset": DATASET_TYPE,
+    "dataset":
+        DATASET_TYPE,
 
-    "loss": loss_history,
+    "loss":
+        loss_history,
 
-    "accuracy": accuracy_history
+    "accuracy":
+        accuracy_history
 }
 
 history_path = (
-    f"results/single_machine/history/"
-    f"cnn_{DATASET_TYPE}_history.json"
+    HISTORY_DIR
+    / f"cnn_{DATASET_TYPE}_history.json"
 )
 
 with open(
-    history_path,
-    "w"
+        history_path,
+        "w"
 ) as f:
 
     json.dump(
@@ -407,36 +446,57 @@ with open(
 
 metrics = {
 
-    "dataset": DATASET_TYPE,
+    "dataset":
+        DATASET_TYPE,
 
-    "accuracy": float(
-        accuracy
-    ),
+    "epochs":
+        EPOCHS,
 
-    "precision": float(
-        precision
-    ),
+    "batch_size":
+        BATCH_SIZE,
 
-    "recall": float(
-        recall
-    ),
+    "learning_rate":
+        LEARNING_RATE,
 
-    "f1_score": float(
-        f1
-    ),
+    "training_time_sec":
+        float(training_time),
+
+    "accuracy":
+        float(accuracy),
+
+    "precision":
+        float(precision),
+
+    "recall":
+        float(recall),
+
+    "f1_score":
+        float(f1),
+
+    "roc_auc":
+        float(roc_auc),
+
+    "pr_auc":
+        float(pr_auc),
+
+    "false_positive_rate":
+        float(fpr),
+
+    "false_negative_rate":
+        float(fnr),
 
     "confusion_matrix":
         cm.tolist()
 }
 
 metrics_path = (
-    f"results/single_machine/metrics/"
-    f"cnn_{DATASET_TYPE}.json"
+    METRICS_DIR
+    / f"cnn_{DATASET_TYPE}.json"
 )
 
 with open(
-    metrics_path,
-    "w"
+        metrics_path,
+        "w"
 ) as f:
 
     json.dump(
@@ -449,20 +509,20 @@ with open(
 # SUMMARY
 # ==================================================
 
-print("\nFiles Saved")
+logger.info("Files Saved")
 
-print(
-    f"Model   : {model_path}"
+logger.info(
+    f"Model : {model_path}"
 )
 
-print(
+logger.info(
     f"Metrics : {metrics_path}"
 )
 
-print(
+logger.info(
     f"History : {history_path}"
 )
 
-print(
-    "\nCentralized training completed successfully."
+logger.info(
+    "Centralized Training Completed Successfully"
 )
