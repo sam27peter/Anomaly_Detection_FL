@@ -31,11 +31,11 @@ from models.model_selector import get_model
 # CONFIG
 # ==================================================
 
-LOCAL_EPOCHS = 20
-
-BATCH_SIZE = 64
-
-LEARNING_RATE = 0.001
+from config.federated_config import (
+    LOCAL_EPOCHS,
+    BATCH_SIZE,
+    LEARNING_RATE
+)
 
 DEVICE = (
     "cuda"

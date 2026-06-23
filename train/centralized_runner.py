@@ -1,7 +1,7 @@
 import subprocess
 import sys
 
-from train.cent_plots import generate_all_plots
+from visualization.cent_plots import generate_all_plots
 
 DATASETS = [
     "25",

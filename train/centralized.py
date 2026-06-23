@@ -35,7 +35,7 @@ from models.model_selector import (
 DATASET_TYPE = (
     sys.argv[1]
     if len(sys.argv) > 1
-    else "25"
+    else "SMAP"
 )
 
 BATCH_SIZE = 64
@@ -74,7 +74,7 @@ os.makedirs(
 # ==================================================
 
 dataset_dir = (
-    f"data/processed/dataset_{DATASET_TYPE}"
+    f"data/processed/{DATASET_TYPE}"
 )
 
 X = np.load(

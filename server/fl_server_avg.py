@@ -28,14 +28,15 @@ from models.model_selector import get_model
 # CONFIG
 # ==================================================
 
-NUM_CLIENTS = 5
-
-ROUNDS = 3
+from config.federated_config import (
+    NUM_CLIENTS,
+    NUM_ROUNDS
+)
 
 DATASET_TYPE = (
     sys.argv[1]
     if len(sys.argv) > 1
-    else "25"
+    else "SMAP"
 )
 
 PARTITION_TYPE = (
@@ -114,12 +115,12 @@ def run_fedavg():
     # COMMUNICATION ROUNDS
     # ==================================================
 
-    for rnd in range(ROUNDS):
+    for rnd in range(NUM_ROUNDS):
 
         print("\n" + "=" * 60)
 
         print(
-            f"ROUND {rnd+1}/{ROUNDS}"
+            f"ROUND {rnd+1}/{NUM_ROUNDS}"
         )
 
         print("=" * 60)
@@ -455,7 +456,7 @@ def run_fedavg():
             NUM_CLIENTS,
 
         "rounds":
-            ROUNDS,
+            NUM_ROUNDS,
 
         "global_accuracy":
             float(global_accuracy),
