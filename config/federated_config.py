@@ -14,4 +14,10 @@ ALGORITHM = "fedavg"
 
 PARTITION = "iid"
 
-DATASET = "SMAP"
+WINDOW_SIZE = 100
+STRIDE = 10
+
+DATASETS = [
+    "SMAP",
+    "MSL"
+]

@@ -1,32 +1,46 @@
-import os
 import ast
 import json
+from pathlib import Path
+
 import numpy as np
 import pandas as pd
 
-WINDOW_SIZE = 100
-STRIDE = 10
+from config.federated_config import (
+    WINDOW_SIZE,
+    STRIDE
+)
+
+from utils.logger import logger
 
 
 class NASAPreprocessorV2:
+    """
+    NASA dataset preprocessing pipeline.
+    """
 
-    def __init__(self):
+    def __init__(self) -> None:
 
-        self.test_dir = "data/raw/test"
+        self.test_dir = (
+            Path("data")
+            / "raw"
+            / "test"
+        )
 
         self.labels_df = pd.read_csv(
-            "data/raw/labeled_anomalies.csv"
+            Path("data")
+            / "raw"
+            / "labeled_anomalies.csv"
         )
 
     # ==================================================
-    # BUILD BINARY LABELS
+    # LABEL CREATION
     # ==================================================
 
     def build_binary_labels(
-        self,
-        signal_length,
-        anomaly_sequences
-    ):
+            self,
+            signal_length: int,
+            anomaly_sequences: str
+    ) -> np.ndarray:
 
         labels = np.zeros(
             signal_length,
@@ -39,10 +53,7 @@ class NASAPreprocessorV2:
 
         for start, end in intervals:
 
-            start = max(
-                0,
-                start
-            )
+            start = max(0, start)
 
             end = min(
                 signal_length - 1,
@@ -54,13 +65,11 @@ class NASAPreprocessorV2:
         return labels
 
     # ==================================================
-    # NORMALIZE SIGNAL
-    # ==================================================
 
     def normalize_signal(
-        self,
-        signal
-    ):
+            self,
+            signal: np.ndarray
+    ) -> np.ndarray:
 
         mean = np.mean(
             signal,
@@ -73,48 +82,40 @@ class NASAPreprocessorV2:
         )
 
         return (
-            signal - mean
+                signal - mean
         ) / (
-            std + 1e-8
+                std + 1e-8
         )
 
     # ==================================================
-    # CREATE WINDOWS
-    # ==================================================
 
     def create_windows(
-        self,
-        signal,
-        labels
-    ):
+            self,
+            signal: np.ndarray,
+            labels: np.ndarray
+    ) -> tuple:
 
         X = []
         y = []
 
         for start in range(
-            0,
-            len(signal) - WINDOW_SIZE,
-            STRIDE
+                0,
+                len(signal) - WINDOW_SIZE,
+                STRIDE
         ):
 
             end = start + WINDOW_SIZE
 
-            window = signal[
-                start:end
-            ]
-
-            label = int(
-                np.max(
-                    labels[start:end]
-                )
-            )
-
             X.append(
-                window
+                signal[start:end]
             )
 
             y.append(
-                label
+                int(
+                    np.max(
+                        labels[start:end]
+                    )
+                )
             )
 
         return (
@@ -123,17 +124,15 @@ class NASAPreprocessorV2:
         )
 
     # ==================================================
-    # PROCESS SINGLE CHANNEL
-    # ==================================================
 
     def process_channel(
-        self,
-        channel
+            self,
+            channel: str
     ):
 
-        path = os.path.join(
-            self.test_dir,
-            f"{channel}.npy"
+        path = (
+            self.test_dir
+            / f"{channel}.npy"
         )
 
         signal = np.load(path)
@@ -141,15 +140,16 @@ class NASAPreprocessorV2:
         row = self.labels_df[
             self.labels_df["chan_id"]
             == channel
-        ]
+            ]
 
         if len(row) == 0:
-
             return None
 
         labels = self.build_binary_labels(
             len(signal),
-            row.iloc[0]["anomaly_sequences"]
+            row.iloc[0][
+                "anomaly_sequences"
+            ]
         )
 
         signal = self.normalize_signal(
@@ -161,72 +161,65 @@ class NASAPreprocessorV2:
             labels
         )
 
-        feature_count = signal.shape[1]
+        return (
+            X,
+            y,
+            signal.shape[1]
+        )
 
-        return X, y, feature_count
-
-    # ==================================================
-    # SAVE DATASET
     # ==================================================
 
     def save_dataset(
-        self,
-        X,
-        y,
-        folder,
-        prefix
-    ):
+            self,
+            X: np.ndarray,
+            y: np.ndarray,
+            folder: Path,
+            dataset_name: str
+    ) -> None:
 
-        os.makedirs(
-            folder,
+        folder.mkdir(
+            parents=True,
             exist_ok=True
         )
 
         np.save(
-            os.path.join(
-                folder,
-                f"X_{prefix}.npy"
-            ),
+            folder / f"X_{dataset_name}.npy",
             X
         )
 
         np.save(
-            os.path.join(
-                folder,
-                f"y_{prefix}.npy"
-            ),
+            folder / f"y_{dataset_name}.npy",
             y
         )
 
         metadata = {
 
-            "window_size": WINDOW_SIZE,
+            "dataset":
+                dataset_name,
 
-            "stride": STRIDE,
+            "window_size":
+                WINDOW_SIZE,
 
-            "samples": int(
-                len(X)
-            ),
+            "stride":
+                STRIDE,
 
-            "shape": list(
-                X.shape
-            ),
+            "samples":
+                int(len(X)),
 
-            "normal_windows": int(
-                np.sum(y == 0)
-            ),
+            "shape":
+                list(X.shape),
 
-            "anomaly_windows": int(
-                np.sum(y == 1)
-            )
+            "normal_windows":
+                int(np.sum(y == 0)),
+
+            "anomaly_windows":
+                int(np.sum(y == 1))
         }
 
         with open(
-            os.path.join(
-                folder,
-                f"metadata_{prefix}.json"
-            ),
-            "w"
+                folder
+                / f"metadata_{dataset_name}.json",
+                "w"
         ) as f:
 
             json.dump(
@@ -236,16 +229,16 @@ class NASAPreprocessorV2:
             )
 
     # ==================================================
-    # PROCESS ALL CHANNELS
-    # ==================================================
 
-    def process_all_channels(self):
+    def process_all_channels(
+            self
+    ) -> None:
 
-        X_25 = []
-        y_25 = []
+        smap_X = []
+        smap_y = []
 
-        X_55 = []
-        y_55 = []
+        msl_X = []
+        msl_y = []
 
         channels = sorted(
             self.labels_df[
@@ -253,8 +246,8 @@ class NASAPreprocessorV2:
             ].tolist()
         )
 
-        print(
-            f"\nProcessing {len(channels)} channels\n"
+        logger.info(
+            f"Processing {len(channels)} channels"
         )
 
         for channel in channels:
@@ -266,105 +259,84 @@ class NASAPreprocessorV2:
                 )
 
                 if result is None:
-
                     continue
 
-                X, y, feature_count = result
+                X, y, features = result
 
-                if feature_count == 25:
+                if features == 25:
 
-                    X_25.append(
-                        X
-                    )
+                    smap_X.append(X)
+                    smap_y.append(y)
 
-                    y_25.append(
-                        y
-                    )
+                elif features == 55:
 
-                elif feature_count == 55:
+                    msl_X.append(X)
+                    msl_y.append(y)
 
-                    X_55.append(
-                        X
-                    )
-
-                    y_55.append(
-                        y
-                    )
-
-                print(
-                    f"{channel:<5}"
-                    f" -> {feature_count} Features"
-                    f" -> {len(X)} Windows"
+                logger.info(
+                    f"{channel} -> "
+                    f"{features} features "
+                    f"-> {len(X)} windows"
                 )
 
             except Exception as e:
 
-                print(
-                    f"Error in {channel}: {e}"
+                logger.error(
+                    f"{channel}: {e}"
                 )
 
-        X_25 = np.concatenate(
-            X_25,
+        smap_X = np.concatenate(
+            smap_X,
             axis=0
         )
 
-        y_25 = np.concatenate(
-            y_25,
+        smap_y = np.concatenate(
+            smap_y,
             axis=0
         )
 
-        X_55 = np.concatenate(
-            X_55,
+        msl_X = np.concatenate(
+            msl_X,
             axis=0
         )
 
-        y_55 = np.concatenate(
-            y_55,
+        msl_y = np.concatenate(
+            msl_y,
             axis=0
         )
 
         self.save_dataset(
-            X_25,
-            y_25,
-            "data/processed/dataset_25",
-            "25"
+
+            smap_X,
+            smap_y,
+
+            Path("data")
+            / "processed"
+            / "SMAP",
+
+            "SMAP"
         )
 
         self.save_dataset(
-            X_55,
-            y_55,
-            "data/processed/dataset_55",
-            "55"
+
+            msl_X,
+            msl_y,
+
+            Path("data")
+            / "processed"
+            / "MSL",
+
+            "MSL"
         )
 
-        print("\n")
-        print("=" * 60)
-        print("DATASET 25")
-        print("=" * 60)
-
-        print(
-            f"X_25 Shape : {X_25.shape}"
+        logger.info(
+            f"SMAP Shape : {smap_X.shape}"
         )
 
-        print(
-            f"y_25 Shape : {y_25.shape}"
+        logger.info(
+            f"MSL Shape : {msl_X.shape}"
         )
 
-        print("\n")
-        print("=" * 60)
-        print("DATASET 55")
-        print("=" * 60)
-
-        print(
-            f"X_55 Shape : {X_55.shape}"
-        )
-
-        print(
-            f"y_55 Shape : {y_55.shape}"
-        )
-
-    # ==================================================
-    # RUN
     # ==================================================
 
     def run(self):
@@ -374,6 +346,4 @@ class NASAPreprocessorV2:
 
 if __name__ == "__main__":
 
-    processor = NASAPreprocessorV2()
-
-    processor.run()
+    NASAPreprocessorV2().run()
