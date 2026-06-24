@@ -1,4 +1,6 @@
-# Federated Learning Configuration
+# ==================================================
+# FEDERATED LEARNING CONFIGURATION
+# ==================================================
 
 NUM_CLIENTS = 5
 
@@ -10,14 +12,32 @@ BATCH_SIZE = 64
 
 LEARNING_RATE = 0.001
 
-ALGORITHM = "fedavg"
+PROX_MU = 0.01
 
-PARTITION = "iid"
-
-WINDOW_SIZE = 100
-STRIDE = 10
+# ==================================================
+# DATASETS
+# ==================================================
 
 DATASETS = [
+
     "SMAP",
+
     "MSL"
+
 ]
+
+# ==================================================
+# PREPROCESSING
+# ==================================================
+
+WINDOW_SIZE = 100
+
+STRIDE = 10
+
+# ==================================================
+# DEFAULTS
+# ==================================================
+
+DEFAULT_ALGORITHM = "fedavg"
+
+DEFAULT_PARTITION = "iid"

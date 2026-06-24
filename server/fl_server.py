@@ -38,6 +38,16 @@ from config.federated_config import (
     NUM_ROUNDS
 )
 
+from utils.experiment_tracker import (
+    ExperimentTracker
+)
+
+from config.federated_config import (
+    LOCAL_EPOCHS,
+    LEARNING_RATE,
+    BATCH_SIZE
+)
+
 # ==================================================
 # ARGUMENTS
 # ==================================================
@@ -122,15 +132,47 @@ def run_server():
 
     final_client_accuracies = []
 
-    save_dir = (
+    tracker = ExperimentTracker(
 
-        Path("results")
+        algorithm=ALGORITHM,
 
-        / "federated"
+        dataset=DATASET_TYPE,
 
-        / ALGORITHM
+        partition=PARTITION_TYPE
 
-        / f"{PARTITION_TYPE}_{DATASET_TYPE}"
+    )
+
+    save_dir = tracker.get_experiment_dir()
+
+    tracker.save_config(
+
+        {
+
+            "algorithm":
+                ALGORITHM,
+
+            "dataset":
+                DATASET_TYPE,
+
+            "partition":
+                PARTITION_TYPE,
+
+            "num_clients":
+                NUM_CLIENTS,
+
+            "rounds":
+                NUM_ROUNDS,
+
+            "local_epochs":
+                LOCAL_EPOCHS,
+
+            "batch_size":
+                BATCH_SIZE,
+
+            "learning_rate":
+                LEARNING_RATE
+
+        }
 
     )
 
