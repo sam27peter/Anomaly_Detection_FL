@@ -1,481 +1,443 @@
-# Anomaly Detection with Federated Learning
+<div align="center">
 
-A PyTorch-based federated learning framework for **time-series anomaly detection** in distributed environments. Implements **FedAvg** and **FedProx** algorithms to train anomaly detection models across multiple clients while preserving data privacy.
+# 🛰️ Anomaly Detection using Federated Learning
 
-Built on **NASA satellite telemetry data** with support for both centralized and federated training paradigms.
+**A comprehensive research framework for privacy-preserving anomaly detection on distributed spacecraft telemetry data**
 
----
+[![Python](https://img.shields.io/badge/Python-3.10%2B-3776AB?style=flat-square&logo=python&logoColor=white)](https://python.org)
+[![PyTorch](https://img.shields.io/badge/PyTorch-2.0%2B-EE4C2C?style=flat-square&logo=pytorch&logoColor=white)](https://pytorch.org)
+[![Streamlit](https://img.shields.io/badge/Dashboard-Streamlit-FF4B4B?style=flat-square&logo=streamlit&logoColor=white)](https://streamlit.io)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow?style=flat-square)](LICENSE)
+[![Status](https://img.shields.io/badge/Status-Active%20Research-brightgreen?style=flat-square)]()
 
-## 🎯 Overview
+*IIT Palakkad Internship Project · June 2026*
 
-### What It Does
-- Trains **1D CNN models** on distributed time-series data without centralizing raw data
-- Supports **two federation strategies:**
-  - **FedAvg:** Simple weight averaging across clients
-  - **FedProx:** Proximal-regularized averaging for heterogeneous client data
-- Generates comprehensive **metrics & visualizations** (confusion matrices, accuracy curves, per-client performance)
-- Provides **centralized baseline** for comparison
-
-### Key Features
-✅ **Privacy-preserving:** Data stays on clients; only model updates are aggregated  
-✅ **Configurable:** Adjustable rounds, epochs, batch size, learning rate  
-✅ **Multi-dataset support:** Easily swap datasets with different feature dimensions  
-✅ **Data heterogeneity:** Supports IID and non-IID data partitioning  
-✅ **Comprehensive metrics:** Accuracy, precision, recall, F1, confusion matrices  
-✅ **Visualization-ready:** Generates loss curves, accuracy plots, client comparisons  
+</div>
 
 ---
 
-## 📋 Requirements
+## 📖 About
 
-- **Python 3.8+**
-- **PyTorch 2.0+** (with CUDA support optional but recommended)
-- **scikit-learn**, **Pandas**, **NumPy**, **Matplotlib**, **Plotly**
-- **Flower (flwr)** – Federated Learning framework
+This framework investigates how anomaly detection models can be trained **collaboratively across distributed clients without ever sharing raw data** — a critical requirement for privacy-sensitive domains such as spacecraft telemetry monitoring.
 
-Install all dependencies:
-```bash
-pip install -r requirements.txt
-```
+The project supports both **centralized** and **federated** learning paradigms for multivariate time-series anomaly detection using NASA spacecraft telemetry datasets (SMAP and MSL), and provides a full research pipeline from raw data ingestion to statistical reporting and interactive dashboard visualisation.
 
-### Hardware
-- **GPU:** Recommended (NVIDIA/CUDA). Code auto-detects and falls back to CPU.
-- **RAM:** ≥8GB (depends on dataset size and batch size)
-- **Disk:** ≥2GB (for data + results)
+### Implemented Capabilities
+
+| Category | Details |
+|---|---|
+| **Learning Paradigms** | Centralized CNN baseline · FedAvg · FedProx |
+| **Data Distributions** | IID · Non-IID client partitioning |
+| **Datasets** | SMAP (25 features) · MSL (55 features) |
+| **Evaluation** | Accuracy · Precision · Recall · F1 · ROC-AUC · PR-AUC · Fairness metrics |
+| **Analysis** | Statistical analysis · Confidence intervals · Centralized vs Federated comparison |
+| **Outputs** | Automated experiment tracking · Visualisation generation · Interactive dashboard |
 
 ---
 
-## 📂 Directory Structure
+## ✨ Framework Highlights
+
+- 🔒 **Privacy-preserving** — raw telemetry never leaves the client; only model parameters are exchanged
+- ⚙️ **One-command orchestration** — `python run_orchestrator.py` runs the entire research pipeline end-to-end
+- 📦 **Reproducible experiments** — every run is automatically saved with its config, metrics, history, model, and plots
+- 📊 **Interactive dashboard** — explore results through a Streamlit web interface
+- ⚖️ **Fairness analysis** — quantifies per-client performance consistency across heterogeneous distributions
+- 📐 **Statistical rigour** — 95% confidence intervals, mean/std, min/max across experiment runs
+- 🧩 **Modular architecture** — designed for straightforward extension with new FL algorithms, models, and datasets
+
+---
+
+## 📂 Repository Structure
 
 ```
 Anomaly_Detection_FL/
 │
-├── client/                           # Federated Learning Clients
-│   ├── fl_client.py                 # Client training logic (FedAvg + FedProx support)
-│   ├── client_runner.py             # Standalone client entry point
-│   └── partitioner.py               # Data partitioning (IID/non-IID distribution)
+├── client/                        # Federated client logic
+│   ├── fl_client.py               #   Local training (FedAvg + FedProx support)
+│   └── partitioner.py             #   IID / Non-IID data partitioning
 │
-├── server/                           # Federated Learning Server
-│   ├── fl_server_avg.py             # FedAvg aggregation & coordination
-│   ├── fl_server_prox.py            # FedProx aggregation (with proximal term)
-│   ├── fedavg_runner.py             # FedAvg wrapper
-│   └── fedprox_runner.py            # FedProx wrapper
+├── server/                        # Federation server
+│   ├── fl_server.py               #   Aggregation & round coordination
+│   └── strategies.py             #   FedAvg and FedProx aggregation strategies
 │
-├── models/                           # Model Architectures
-│   ├── cnn_model.py                 # 1D CNN for time-series (Conv1d + FC layers)
-│   ├── architecture.py              # BaseModel interface
-│   └── model_selector.py            # Model factory function
+├── models/                        # Model definitions
+│   ├── cnn_model.py               #   1D CNN for multivariate time-series
+│   ├── architecture.py            #   BaseModel interface
+│   └── model_selector.py          #   Model factory
 │
-├── train/                            # Training & Analysis Utilities
-│   ├── centralized.py               # Centralized training (non-federated baseline)
-│   ├── data_manager.py              # Dataset loader & statistics
-│   ├── preprocessor_v2.py           # Data normalization & windowing
-│   ├── cent_plots.py                # Visualization for centralized training
-│   ├── feature_analysis.py          # Feature importance analysis
-│   ├── failure_analysis.py          # Anomaly detection failure modes
-│   ├── fusion_data_analysis.py      # Multi-sensor data fusion analysis
-│   └── centralized_runner.py        # Centralized training entry point
+├── train/                         # Training & preprocessing
+│   ├── centralized.py             #   Centralized (non-federated) baseline trainer
+│   ├── centralized_runner.py      #   Entry point for centralized training
+│   ├── preprocessor_v2.py         #   Data normalisation and sliding-window generation
+│   └── data_manager.py            #   Dataset loading and statistics
+│
+├── evaluation/                    # Evaluation engine
+│   ├── metrics.py                 #   Core metrics (accuracy, F1, ROC-AUC, PR-AUC, etc.)
+│   ├── fairness.py                #   Per-client fairness metrics
+│   ├── comparison.py              #   Cross-experiment comparison utilities
+│   ├── centralized_vs_fl.py       #   Centralized vs federated performance gap
+│   └── statistical_analysis.py   #   Confidence intervals and summary statistics
+│
+├── visualization/                 # Plot generation
+│   ├── centralized_plots.py       #   Centralized training curves and confusion matrices
+│   ├── federated_plots.py         #   Per-round accuracy / loss / per-client plots
+│   ├── comparison_plots.py        #   Side-by-side algorithm comparisons
+│   ├── comparison_table.py        #   Tabular comparison outputs
+│   └── statistical_plots.py       #   Distribution and confidence interval charts
+│
+├── config/
+│   └── federated_config.py        #   Centralised hyperparameter configuration
+│
+├── utils/
+│   ├── logger.py                  #   Project-wide logging setup
+│   ├── experiment_logger.py       #   Per-experiment logging
+│   └── experiment_tracker.py      #   Experiment registry and metadata management
+│
+├── analysis/                      #   Post-hoc research analysis notebooks/scripts
 │
 ├── data/
-│   ├── raw/
-│   │   ├── train/                   # NASA satellite training telemetry (.npy)
-│   │   ├── test/                    # NASA satellite test telemetry (.npy)
-│   │   └── labeled_anomalies.csv    # Ground truth anomaly labels
-│   ├── processed/
-│   │   ├── dataset_*                # Preprocessed datasets
-│   │   ├── partitions/              # Client data partitions
-│   │   └── reports/                 # Dataset statistics & analysis
-│   └── .gitkeep
+│   ├── raw/                       #   NASA telemetry files (not tracked in git)
+│   │   ├── train/
+│   │   ├── test/
+│   │   └── labeled_anomalies.csv
+│   ├── processed/                 #   Preprocessed datasets and reports
+│   └── partitions/                #   Client data partitions
 │
-├── results/                          # Output directory (auto-created)
-│   ├── single_machine/              # Centralized training results
-│   │   ├── models/                  # Trained models (.pth)
-│   │   ├── metrics/                 # Metrics JSON files
-│   │   └── history/                 # Training history JSON
-│   └── federated/
-│       ├── fedavg/                  # FedAvg results by partition type
-│       ├── fedprox/                 # FedProx results
-│       ├── local_clients/           # Per-client local results
-│       └── *_summary.csv            # Aggregated metrics across runs
+├── results/                       #   All experiment outputs (auto-created)
+├── logs/                          #   Runtime logs (auto-created)
 │
-├── requirements.txt                  # Python dependencies
-├── run_orchestrator.py              # (Placeholder) Main orchestrator
-├── dashboard.py                     # (Placeholder) Dash visualization UI
-└── README.md                        # This file
+├── dashboard.py                   # Streamlit interactive dashboard
+├── run_orchestrator.py            # End-to-end pipeline orchestrator
+├── requirements.txt
+└── README.md
+```
+
+---
+
+## 🔄 End-to-End Workflow
+
+```
+Raw NASA Telemetry (SMAP / MSL)
+             │
+             ▼
+  Preprocessing & Sliding-Window Generation
+             │
+             ▼
+     Client Data Partitioning (IID / Non-IID)
+             │
+        ┌────┴────┐
+        ▼         ▼
+  Centralized   Federated Training
+   Baseline     (FedAvg / FedProx)
+        │         │
+        └────┬────┘
+             ▼
+     Experiment Tracking & Logging
+             │
+             ▼
+    Metrics Evaluation (Accuracy, F1, AUC …)
+             │
+             ▼
+     Fairness Analysis (per-client variance)
+             │
+             ▼
+    Statistical Analysis (CI, mean, std)
+             │
+             ▼
+   Visualisation Generation (plots, tables)
+             │
+             ▼
+     Interactive Streamlit Dashboard
 ```
 
 ---
 
 ## 🚀 Quick Start
 
-### 1. Prepare Your Environment
+### 1 — Clone and install
+
 ```bash
 git clone https://github.com/sam27peter/Anomaly_Detection_FL.git
 cd Anomaly_Detection_FL
 pip install -r requirements.txt
 ```
 
-**Note:** You'll need NASA satellite telemetry data. Place raw data in `data/raw/` with structure:
+### 2 — Prepare the dataset
+
+Place the NASA telemetry files inside `data/raw/`:
+
 ```
 data/raw/
-├── train/              # channel_001.npy, channel_002.npy, ...
-├── test/               # channel_001.npy, channel_002.npy, ...
-└── labeled_anomalies.csv
+├── train/                  # channel_*.npy  (one file per telemetry channel)
+├── test/                   # channel_*.npy
+└── labeled_anomalies.csv   # ground-truth anomaly labels
 ```
 
-### 2. Analyze Your Dataset
+Generate preprocessed datasets and client partitions:
+
 ```bash
-python train/data_manager.py
+python -m train.preprocessor_v2
+python -m client.partitioner
 ```
-**Output:** Dataset statistics in `data/processed/reports/`
-- `channel_statistics.csv` – Per-channel stats (min, max, mean, std, anomaly counts)
-- `dataset_summary.json` – Aggregate dataset info
 
-### 3. Run Centralized Baseline (Optional)
-Train a single CNN on all data:
+### 3 — Run the full research pipeline
+
 ```bash
-python train/centralized.py 25
+python run_orchestrator.py
 ```
-**Arguments:**
-- `25` – Number of features in dataset (default: "25")
 
-**Output in `results/single_machine/`:**
-- `models/cnn_25.pth` – Trained model weights
-- `metrics/cnn_25.json` – Accuracy, precision, recall, F1, confusion matrix
-- `history/cnn_25_history.json` – Training loss & accuracy per epoch
+This single command automatically:
 
-### 4. Run Federated Learning (FedAvg)
-Distribute training across 5 clients over 3 rounds:
+1. Trains the centralised CNN baseline on SMAP and MSL
+2. Runs all federated experiments (FedAvg / FedProx × IID / Non-IID)
+3. Computes all evaluation metrics
+4. Performs fairness analysis across clients
+5. Generates all visualisations and comparison reports
+6. Produces statistical summaries with confidence intervals
+7. Writes all outputs ready for the dashboard
+
+---
+
+## 🖥️ Run Individual Components
+
+### Centralised baseline
+
 ```bash
-python server/fedavg_runner.py 25 iid
+python -m train.centralized_runner SMAP
+python -m train.centralized_runner MSL
 ```
 
-**Arguments:**
-- `25` – Number of features
-- `iid` – Data distribution type ("iid" = identically distributed, "non_iid" = heterogeneous)
+### Federated training
 
-**Output in `results/federated/fedavg/iid_25/`:**
-- `global_model.pth` – Aggregated global model after all rounds
-- `metrics.json` – Final global metrics (accuracy, F1, confusion matrix)
-- `history.json` – Per-round accuracy & loss
-- `global_confusion_matrix.png` – Visualization
-- `accuracy_curve.png` – Global accuracy vs. round
-- `loss_curve.png` – Global loss vs. round
-- `client_accuracy.png` – Per-client accuracy comparison
-
-**Additional outputs in `results/federated/local_clients/iid_25/client_{1-5}/`:**
-- `local_model.pth` – Client's final local model
-- `metrics.json` – Client's local metrics
-- `loss_curve.png` – Client's training loss curve
-- `confusion_matrix.png` – Client's test confusion matrix
-
-### 5. Run Federated Learning (FedProx)
-More stable for non-IID data (adds proximal regularization):
 ```bash
-python server/fedprox_runner.py 25 non_iid
+# FedAvg — IID distribution on SMAP
+python -m server.fl_server fedavg SMAP iid
+
+# FedProx — Non-IID distribution on MSL
+python -m server.fl_server fedprox MSL non_iid
 ```
 
-**Arguments & outputs:** Same as FedAvg, results in `results/federated/fedprox/`
+**Argument reference**
+
+| Position | Values |
+|---|---|
+| Algorithm | `fedavg` · `fedprox` |
+| Dataset | `SMAP` · `MSL` |
+| Partition | `iid` · `non_iid` |
 
 ---
 
-## 📊 Understanding the Architecture
+## 🧠 Model Architecture
 
-### Model: 1D CNN for Time-Series
-Located in `models/cnn_model.py`:
-
-```
-Input (batch_size, sequence_length, num_features)
-  ↓
-Conv1d(num_features → 32, kernel=5) + BatchNorm + ReLU + MaxPool
-  ↓
-Conv1d(32 → 64, kernel=3) + BatchNorm + ReLU + MaxPool
-  ↓
-AdaptiveAvgPool1d (global aggregation)
-  ↓
-FC(64 → 128) + ReLU + Dropout(0.3)
-  ↓
-FC(128 → 1) + Sigmoid
-  ↓
-Output (batch_size, 1) – Anomaly probability [0, 1]
-```
-
-**Why this design?**
-- **Conv1d layers:** Extract temporal patterns from multivariate time-series
-- **MaxPool:** Reduce dimensionality, capture important temporal features
-- **Batch Norm:** Stabilize training in federated setting
-- **AdaptiveAvgPool:** Handle variable-length sequences
-- **Sigmoid:** Binary classification (normal vs. anomaly)
-
-### Federated Learning Flow
-
-#### FedAvg (Simple Averaging)
-```
-Round 1:
-  Server → broadcast global_model_weights to [Client_1, ..., Client_5]
-  Client_i: load_weights(global) → train_locally(20 epochs) → return local_weights
-  Server: avg_weights = mean([Client_1_weights, ..., Client_5_weights])
-  Server: update global_model_weights = avg_weights
-
-Round 2, 3: Repeat
-```
-
-#### FedProx (Proximal Regularization)
-```
-Same as FedAvg, but during client training:
-
-Loss = Classification_Loss + (μ/2) * ||local_weights - global_weights||²
-
-This regularization term pulls client weights toward global model,
-reducing divergence in heterogeneous (non-IID) settings.
-```
-
-### Data Partitioning
-
-**IID (Independent & Identically Distributed):**
-- Shuffle all data randomly and distribute equally to clients
-- Simulates realistic scenario where each device has similar data distribution
-
-**Non-IID (Heterogeneous):**
-- Partition by class/label (each client sees fewer classes)
-- Simulates reality where devices have different local data characteristics
-- Tests algorithm robustness to distribution skew
-
----
-
-## 🔧 Configuration & Customization
-
-### Modify Training Parameters
-
-**Centralized training** (`train/centralized.py`):
-```python
-BATCH_SIZE = 64          # Batch size for training
-EPOCHS = 20              # Number of training epochs
-LEARNING_RATE = 0.001    # Adam optimizer learning rate
-DEVICE = "cuda" / "cpu"  # Automatic
-```
-
-**Federated client** (`client/fl_client.py`):
-```python
-LOCAL_EPOCHS = 20        # Local training epochs per round
-BATCH_SIZE = 64
-LEARNING_RATE = 0.001
-mu = 0.01                # FedProx regularization coefficient (larger = more regulation)
-```
-
-**Federated server** (`server/fl_server_avg.py`):
-```python
-NUM_CLIENTS = 5          # Number of federated clients
-ROUNDS = 3               # Communication rounds
-DATASET_TYPE = "25"      # Feature dimension
-PARTITION_TYPE = "iid"   # "iid" or "non_iid"
-```
-
-### Future: Move to Config File
-Hardcoded values should be replaced with a YAML config:
-```yaml
-# config.yaml
-centralized:
-  batch_size: 64
-  epochs: 20
-  learning_rate: 0.001
-
-federated:
-  num_clients: 5
-  rounds: 3
-  local_epochs: 20
-  mu_fedprox: 0.01
-```
-
-Usage: `python server/fedavg_runner.py --config config.yaml`
-
----
-
-## 📈 Interpreting Results
-
-### Metrics Explained
-
-| Metric | Meaning | Target |
-|--------|---------|--------|
-| **Accuracy** | % of correct predictions | High (>0.95) |
-| **Precision** | % of predicted anomalies that are real | High (>0.9) |
-| **Recall** | % of real anomalies detected | High (>0.9) |
-| **F1 Score** | Harmonic mean of precision & recall | High (>0.9) |
-| **Confusion Matrix** | [TN, FP; FN, TP] – break down by class | Diagonal high, off-diagonal low |
-
-### Files Generated
-
-**JSON Metrics** (`results/*/metrics.json`):
-```json
-{
-  "dataset_type": "25",
-  "accuracy": 0.9543,
-  "precision": 0.9512,
-  "recall": 0.9574,
-  "f1_score": 0.9543,
-  "confusion_matrix": [[234, 12], [10, 256]]
-}
-```
-
-**Training History** (`results/*/history.json`):
-```json
-{
-  "accuracy": [0.82, 0.88, 0.92, ...],
-  "loss": [0.45, 0.35, 0.25, ...]
-}
-```
-
-**Plots:**
-- **accuracy_curve.png** – Global accuracy improving over FL rounds
-- **loss_curve.png** – Global loss decreasing over rounds
-- **client_accuracy.png** – Bar chart of per-client accuracy
-- **global_confusion_matrix.png** – Final confusion matrix heatmap
-
-### Comparing Centralized vs. Federated
+The anomaly detector uses a **1D CNN** designed for multivariate time-series:
 
 ```
-Scenario: 25 features, IID data
-─────────────────────────────────────────
-               Accuracy   F1 Score
-─────────────────────────────────────────
-Centralized     0.9540     0.9542  (all data, non-private)
-FedAvg          0.9512     0.9511  (distributed, private)
-FedProx         0.9518     0.9517  (distributed, more robust)
-─────────────────────────────────────────
-```
+Input  (batch, sequence_length, num_features)
+  │
+  ▼
+Conv1d → BatchNorm → ReLU → MaxPool       [feature extraction]
+  │
+  ▼
+Conv1d → BatchNorm → ReLU → MaxPool       [deeper pattern extraction]
+  │
+  ▼
+AdaptiveAvgPool1d                          [handles variable-length sequences]
+  │
+  ▼
+Linear(64 → 128) → ReLU → Dropout(0.3)
+  │
+  ▼
+Linear(128 → 1) → Sigmoid
 
-**Insights:**
-- FedAvg: Slight degradation due to data partitioning
-- FedProx: Better than FedAvg on heterogeneous data
-- Privacy gain: Model weights never centralized (only aggregated)
-
----
-
-## 🛠️ Advanced Usage
-
-### Train on Custom Dataset
-
-1. **Prepare data in `data/raw/`:**
-   ```
-   train/: X_train samples (e.g., channel_001.npy shape: [sequence_length])
-   test/:  X_test samples (e.g., channel_001.npy shape: [sequence_length])
-   labeled_anomalies.csv: with columns [chan_id, anomaly_sequences, class]
-   ```
-
-2. **Update `data_manager.py`** to match your data format
-
-3. **Run with your feature dimension:**
-   ```bash
-   python server/fedavg_runner.py <YOUR_NUM_FEATURES> iid
-   ```
-
-### Extend Model Architecture
-
-Edit `models/cnn_model.py` or create new model:
-```python
-class LSTMModel(nn.Module, BaseModel):
-    def __init__(self, num_features):
-        super().__init__()
-        self.lstm = nn.LSTM(num_features, 64, batch_first=True)
-        self.fc = nn.Linear(64, 1)
-        self.sigmoid = nn.Sigmoid()
-    
-    def forward(self, x):
-        lstm_out, _ = self.lstm(x)
-        return self.sigmoid(self.fc(lstm_out[:, -1, :]))
-```
-
-Update `models/model_selector.py`:
-```python
-def get_model(model_type, num_features):
-    if model_type == "cnn":
-        return CNNModel(num_features)
-    elif model_type == "lstm":
-        return LSTMModel(num_features)
-```
-
-### Run Custom FL Algorithm
-
-Modify `server/fl_server_avg.py` aggregation logic:
-```python
-def federated_average(local_weights):
-    # Current: simple mean
-    # Custom: weighted by client dataset size, median instead of mean, etc.
-    ...
+Output  0 = Normal  ·  1 = Anomaly
 ```
 
 ---
 
-## ❌ Troubleshooting
+## 🌐 Federated Learning Protocol
 
-### Common Issues
+```
+Initialise global model on server
+         │
+         ▼
+┌── For each communication round ──────────────────────────────┐
+│                                                               │
+│  Server broadcasts current global weights to all clients     │
+│         │                                                     │
+│         ▼                                                     │
+│  Each client trains locally on its private partition          │
+│  (FedProx adds proximal term: μ/2 · ‖w − w_global‖²)       │
+│         │                                                     │
+│         ▼                                                     │
+│  Clients return updated weights (no raw data shared)         │
+│         │                                                     │
+│         ▼                                                     │
+│  Server aggregates → new global model                        │
+│                                                               │
+└───────────────────────────────────────────────────────────────┘
+         │
+         ▼
+Evaluate global model · log metrics · save checkpoint
+```
 
-**Issue:** `FileNotFoundError: data/raw/train`
-- **Fix:** Download NASA satellite data; ensure raw data is in `data/raw/` directory
-
-**Issue:** `RuntimeError: Expected 3D input (got 2D)`
-- **Fix:** Ensure input data shape is `(batch_size, sequence_length, num_features)`; check `preprocessor_v2.py`
-
-**Issue:** `CUDA out of memory`
-- **Fix:** Reduce `BATCH_SIZE` (try 32 or 16); use CPU with `torch.device("cpu")`
-
-**Issue:** Model not improving after rounds
-- **Possible causes:**
-  - Learning rate too high → reduce `LEARNING_RATE`
-  - Too few local epochs → increase `LOCAL_EPOCHS`
-  - Non-IID data → use FedProx instead of FedAvg
-  - Data imbalance → check anomaly ratio in dataset
-
-**Issue:** Different results on re-run
-- **Fix:** Set random seeds for reproducibility:
-  ```python
-  import torch, numpy as np, random
-  torch.manual_seed(42)
-  np.random.seed(42)
-  random.seed(42)
-  ```
+> **Privacy guarantee:** raw telemetry data never leaves the originating client. Only model weight tensors are transmitted.
 
 ---
 
-## 📚 Key References
+## 📊 Interactive Dashboard
 
-### Federated Learning Papers
-- **FedAvg:** McMahan et al. (2017) – "Communication-Efficient Learning of Deep Networks from Decentralized Data"
-- **FedProx:** Li et al. (2020) – "Federated Optimization in Heterogeneous Networks"
+Launch the Streamlit dashboard to explore all experiment results interactively:
 
-### Time-Series Anomaly Detection
-- Anomaly detection in satellite telemetry (NASA data context)
-- 1D CNN effectiveness for temporal pattern extraction
+```bash
+streamlit run dashboard.py
+```
 
-### Libraries Used
-- **Flower (flwr):** Lightweight federated learning framework
-- **PyTorch:** Deep learning backend
-- **scikit-learn:** Metrics & preprocessing
+**Dashboard panels**
+
+- Experiment selector (algorithm · dataset · partition)
+- Training curves (accuracy and loss per round)
+- Global evaluation metrics
+- Per-client fairness statistics and accuracy bar chart
+- Algorithm comparison tables
+- Centralised vs federated performance gap analysis
+
+---
+
+## 🧪 Experiment Tracking
+
+Every experiment run is automatically persisted under `results/experiments/`:
+
+```
+results/experiments/
+└── fedavg_iid_SMAP_20260624_164557/
+    ├── experiment_config.json     # Full hyperparameter snapshot
+    ├── metrics.json               # Final evaluation metrics
+    ├── history.json               # Per-round training history
+    ├── global_model.pth           # Trained global model weights
+    ├── accuracy_curve.png
+    └── loss_curve.png
+```
+
+Stored artefacts per experiment:
+
+- Full hyperparameter configuration (learning rate, rounds, clients, µ, etc.)
+- Per-round and final metrics (accuracy, precision, recall, F1, AUC)
+- Trained model checkpoint
+- All generated plots
+
+---
+
+## 📈 Evaluation Metrics
+
+| Metric | Description |
+|---|---|
+| Accuracy | Overall classification correctness |
+| Precision | Fraction of flagged anomalies that are true anomalies |
+| Recall | Fraction of true anomalies that are detected |
+| F1 Score | Harmonic mean of precision and recall |
+| ROC-AUC | Area under receiver operating characteristic curve |
+| PR-AUC | Area under precision–recall curve |
+| Confusion Matrix | Per-class breakdown (TP / TN / FP / FN) |
+
+---
+
+## ⚖️ Fairness Analysis
+
+Federated learning introduces potential **performance disparity across clients** (especially under Non-IID distributions). The framework quantifies this with:
+
+| Fairness Metric | Description |
+|---|---|
+| Mean client accuracy | Average performance across all clients |
+| Standard deviation | Spread of per-client performance |
+| Best client accuracy | Upper bound of performance |
+| Worst client accuracy | Lower bound of performance |
+| Accuracy gap | Best minus worst — key fairness indicator |
+
+Low accuracy gap → model is fair; high gap → some clients benefit significantly more than others.
+
+---
+
+## 📐 Statistical Analysis
+
+Automated statistical reports are written to `results/statistics/`:
+
+```
+results/statistics/
+├── statistics.csv          # Per-algorithm summary table
+└── mean_accuracy.png       # Accuracy distribution chart
+```
+
+Each report includes mean, standard deviation, min, max, and **95% confidence interval** across multiple runs — enabling statistically rigorous comparison between FedAvg, FedProx, and the centralised baseline.
+
+---
+
+## 📝 Logging
+
+Separate log files are maintained per subsystem for full traceability:
+
+```
+logs/
+├── centralized.log
+├── federated.log
+├── dashboard.log
+├── project.log
+└── experiments/
+    └── <experiment_name>.log
+```
+
+---
+
+## 📁 Results Layout
+
+```
+results/
+├── experiments/           # Full per-run artefacts (model, metrics, plots)
+├── comparison/            # Cross-algorithm comparison outputs
+├── centralized_vs_fl/     # Centralised vs federated gap analysis
+├── statistics/            # Statistical summaries and CI reports
+└── single_machine/        # Centralised baseline results
+```
+
+---
+
+## 🔮 Future Work
+
+- [ ] **Flower-based deployment** — migrate federation layer to the `flwr` framework
+- [ ] **Communication channel simulation** — AWGN and Polar-NRZ channel models to study degraded uplinks
+- [ ] **Differential privacy** — add DP-SGD noise for formal privacy guarantees
+- [ ] **Secure aggregation** — cryptographic protection of client updates
+- [ ] **Transformer-based detector** — replace CNN with a time-series Transformer
+- [ ] **Additional FL algorithms** — SCAFFOLD · FedAdam · FedYogi
+- [ ] **Hyperparameter optimisation** — automated search over FL-specific hyperparameters
+- [ ] **Real-time dashboard updates** — live streaming of in-progress experiment metrics
+
+---
+
+## 📚 References
+
+**Federated Learning**
+- McMahan et al. (2017) — *Communication-Efficient Learning of Deep Networks from Decentralized Data* (FedAvg)
+- Li et al. (2020) — *Federated Optimization in Heterogeneous Networks* (FedProx)
+
+**Dataset**
+- NASA Spacecraft Telemetry Anomaly Detection Dataset — SMAP (Soil Moisture Active Passive) and MSL (Mars Science Laboratory)
 
 ---
 
 ## 🤝 Contributing
 
-Contributions welcome! Areas for improvement:
-- [ ] Complete `run_orchestrator.py` (unified CLI entry point)
-- [ ] Build `dashboard.py` (Dash web UI for results visualization)
-- [ ] Add unit tests (`tests/`)
-- [ ] Implement differential privacy
-- [ ] Add async FL for stragglers
-- [ ] Support for Transformer models
+Contributions, issues, and feature requests are welcome. Please open an issue or submit a pull request.
 
 ---
 
-## 📝 License
+## 📄 License
 
-[Specify your license here – e.g., MIT, Apache 2.0]
-
----
-
-## 📧 Contact & Questions
-
-For questions or issues, please open a GitHub issue or contact the repository maintainer.
+This project is released under the [MIT License](LICENSE).
 
 ---
 
-**Last Updated:** 2026-06-22
+<div align="center">
+
+**👨‍💻 Sam Peter & Steve CJ· IIT Palakkad Internship Project · June 2026**
+
+</div>
