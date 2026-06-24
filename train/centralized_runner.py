@@ -1,11 +1,13 @@
 import subprocess
 import sys
 
-from visualization.centralized_plots import generate_all_plots
+from visualization.centralized_plots import (
+    generate_all_plots
+)
 
 DATASETS = [
-    "25",
-    "55"
+    "SMAP",
+    "MSL"
 ]
 
 for dataset in DATASETS:
@@ -24,8 +26,10 @@ for dataset in DATASETS:
         check=True
     )
 
-    generate_all_plots(dataset)
+    generate_all_plots(
+        dataset
+    )
 
 print("\n" + "=" * 60)
-print("ALL EXPERIMENTS COMPLETED")
+print("ALL CENTRALIZED EXPERIMENTS COMPLETED")
 print("=" * 60)

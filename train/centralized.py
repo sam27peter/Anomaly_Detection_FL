@@ -29,7 +29,9 @@ from sklearn.metrics import (
 )
 
 from models.model_selector import get_model
-from utils.logger import logger
+from utils.logger import (
+    centralized_logger as logger
+)
 
 # ==================================================
 # CONFIG

@@ -4,6 +4,13 @@ from pathlib import Path
 import pandas as pd
 import streamlit as st
 
+from utils.logger import (
+    dashboard_logger as logger
+)
+
+logger.info(
+    "Dashboard Started"
+)
 
 # ==================================================
 # PAGE CONFIG

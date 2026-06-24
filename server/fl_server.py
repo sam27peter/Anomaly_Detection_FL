@@ -18,7 +18,13 @@ from models.model_selector import (
     get_model
 )
 
-from utils.logger import logger
+from utils.logger import (
+    federated_logger as logger
+)
+
+from utils.experiment_logger import (
+    ExperimentLogger
+)
 
 from evaluation.metrics import (
     compute_metrics
@@ -35,62 +41,42 @@ from server.strategies import (
 
 from config.federated_config import (
     NUM_CLIENTS,
-    NUM_ROUNDS
+    NUM_ROUNDS,
+    LOCAL_EPOCHS,
+    LEARNING_RATE,
+    BATCH_SIZE
 )
 
 from utils.experiment_tracker import (
     ExperimentTracker
 )
 
-from config.federated_config import (
-    LOCAL_EPOCHS,
-    LEARNING_RATE,
-    BATCH_SIZE
-)
-
-
 # ==================================================
 # ARGUMENTS
 # ==================================================
 
 ALGORITHM = (
-
     sys.argv[1]
-
     if len(sys.argv) > 1
-
     else "fedavg"
-
 ).lower()
 
 DATASET_TYPE = (
-
     sys.argv[2]
-
     if len(sys.argv) > 2
-
     else "SMAP"
-
 )
 
 PARTITION_TYPE = (
-
     sys.argv[3]
-
     if len(sys.argv) > 3
-
     else "iid"
-
 )
 
 DEVICE = (
-
     "cuda"
-
     if torch.cuda.is_available()
-
     else "cpu"
-
 )
 
 # ==================================================
@@ -107,21 +93,14 @@ def run_server():
     experiment_start = time.time()
 
     num_features = (
-
         25
-
         if DATASET_TYPE == "SMAP"
-
         else 55
-
     )
 
     global_model = get_model(
-
         "cnn",
-
         num_features
-
     ).to(DEVICE)
 
     prox_mu = get_prox_mu(
@@ -133,53 +112,58 @@ def run_server():
 
     final_client_accuracies = []
 
+    # ==================================================
+    # EXPERIMENT TRACKING
+    # ==================================================
+
     tracker = ExperimentTracker(
-
         algorithm=ALGORITHM,
-
         dataset=DATASET_TYPE,
-
         partition=PARTITION_TYPE
-
     )
 
     save_dir = tracker.get_experiment_dir()
 
     tracker.save_config(
-
         {
-
-            "algorithm":
-                ALGORITHM,
-
-            "dataset":
-                DATASET_TYPE,
-
-            "partition":
-                PARTITION_TYPE,
-
-            "num_clients":
-                NUM_CLIENTS,
-
-            "rounds":
-                NUM_ROUNDS,
-
-            "local_epochs":
-                LOCAL_EPOCHS,
-
-            "batch_size":
-                BATCH_SIZE,
-
-            "learning_rate":
-                LEARNING_RATE
-
+            "algorithm": ALGORITHM,
+            "dataset": DATASET_TYPE,
+            "partition": PARTITION_TYPE,
+            "num_clients": NUM_CLIENTS,
+            "rounds": NUM_ROUNDS,
+            "local_epochs": LOCAL_EPOCHS,
+            "batch_size": BATCH_SIZE,
+            "learning_rate": LEARNING_RATE
         }
-
     )
 
     save_dir.mkdir(
         parents=True,
         exist_ok=True
+    )
+
+    # ==================================================
+    # EXPERIMENT LOGGER
+    # ==================================================
+
+    exp_logger = ExperimentLogger(
+        tracker.experiment_name
+    )
+
+    exp_logger.info(
+        "Experiment Started"
+    )
+
+    exp_logger.info(
+        f"Algorithm: {ALGORITHM}"
+    )
+
+    exp_logger.info(
+        f"Dataset: {DATASET_TYPE}"
+    )
+
+    exp_logger.info(
+        f"Partition: {PARTITION_TYPE}"
     )
 
     # ==================================================
@@ -190,6 +174,10 @@ def run_server():
 
         logger.info(
             f"ROUND {rnd + 1}/{NUM_ROUNDS}"
+        )
+
+        exp_logger.info(
+            f"Starting Round {rnd + 1}"
         )
 
         local_weights = []
@@ -204,23 +192,15 @@ def run_server():
         # ---------------------------------------------
 
         for client_id in range(
-
                 1,
-
                 NUM_CLIENTS + 1
-
         ):
 
             weights, metrics = run_client(
-
                 client_id=client_id,
-
                 dataset_type=DATASET_TYPE,
-
                 partition_type=PARTITION_TYPE,
-
                 global_weights=global_weights,
-
                 mu=prox_mu
             )
 
@@ -239,39 +219,45 @@ def run_server():
         # ---------------------------------------------
 
         aggregated_weights = (
-
             federated_average(
                 local_weights
             )
-
         )
 
         global_model.load_state_dict(
             aggregated_weights
         )
 
+        avg_acc = float(
+            np.mean(round_acc)
+        )
+
+        avg_loss = float(
+            np.mean(round_loss)
+        )
+
         global_acc_history.append(
-
-            float(
-                np.mean(
-                    round_acc
-                )
-            )
-
+            avg_acc
         )
 
         global_loss_history.append(
-
-            float(
-                np.mean(
-                    round_loss
-                )
-            )
-
+            avg_loss
         )
 
         final_client_accuracies = (
             round_acc
+        )
+
+        logger.info(
+            f"Round {rnd + 1} "
+            f"Accuracy: {avg_acc:.4f} "
+            f"Loss: {avg_loss:.4f}"
+        )
+
+        exp_logger.info(
+            f"Round {rnd + 1} | "
+            f"Accuracy={avg_acc:.4f} | "
+            f"Loss={avg_loss:.4f}"
         )
 
     # ==================================================
@@ -282,23 +268,15 @@ def run_server():
     all_y = []
 
     for client_id in range(
-
             1,
-
             NUM_CLIENTS + 1
-
     ):
 
         file = (
-
             Path("data")
-
             / "partitions"
-
             / f"{PARTITION_TYPE}_{DATASET_TYPE}"
-
             / f"client_{client_id}.npz"
-
         )
 
         data = np.load(file)
@@ -320,23 +298,17 @@ def run_server():
     )
 
     loader = DataLoader(
-
         TensorDataset(
-
             torch.tensor(
                 X,
                 dtype=torch.float32
             ),
-
             torch.tensor(
                 y,
                 dtype=torch.float32
             )
-
         ),
-
-        batch_size=64,
-
+        batch_size=BATCH_SIZE,
         shuffle=False
     )
 
@@ -387,23 +359,15 @@ def run_server():
     ).flatten()
 
     metrics = compute_metrics(
-
         ground_truth,
-
         predictions,
-
         probabilities
-
     )
 
     fairness_metrics = (
-
         compute_fairness(
-
             final_client_accuracies
-
         )
-
     )
 
     metrics.update(
@@ -428,7 +392,6 @@ def run_server():
             NUM_ROUNDS,
 
         "training_time_sec":
-
             float(
                 time.time()
                 -
@@ -438,25 +401,17 @@ def run_server():
     })
 
     # ==================================================
-    # SAVE
+    # SAVE FILES
     # ==================================================
 
     torch.save(
-
         global_model.state_dict(),
-
-        save_dir
-        / "global_model.pth"
-
+        save_dir / "global_model.pth"
     )
 
     with open(
-
-            save_dir
-            / "metrics.json",
-
+            save_dir / "metrics.json",
             "w"
-
     ) as f:
 
         json.dump(
@@ -479,12 +434,8 @@ def run_server():
     }
 
     with open(
-
-            save_dir
-            / "history.json",
-
+            save_dir / "history.json",
             "w"
-
     ) as f:
 
         json.dump(
@@ -542,6 +493,29 @@ def run_server():
     )
 
     plt.close()
+
+    # ==================================================
+    # FINAL LOGGING
+    # ==================================================
+
+    exp_logger.info(
+        f"Final Accuracy: "
+        f"{metrics['accuracy']:.4f}"
+    )
+
+    exp_logger.info(
+        f"Final F1 Score: "
+        f"{metrics['f1_score']:.4f}"
+    )
+
+    exp_logger.info(
+        f"Training Time: "
+        f"{metrics['training_time_sec']:.2f}s"
+    )
+
+    exp_logger.info(
+        "Experiment Completed"
+    )
 
     logger.info(
         f"{ALGORITHM.upper()} Completed"
